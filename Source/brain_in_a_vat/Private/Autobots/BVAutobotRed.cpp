@@ -22,7 +22,21 @@ ABVAutobotRed::ABVAutobotRed()
 		GetMesh()->SetAnimInstanceClass(AnimInstanceClassRef.Class);
 	}
 
+	static ConstructorHelpers::FObjectFinder<UAnimMontage> AttackMontageRef(TEXT("/Script/Engine.AnimMontage'/Game/SkeletalMesh/base_robot_02/Montage_Attack.Montage_Attack'"));
+	if (AttackMontageRef.Object)
+	{
+		AttackMontage = AttackMontageRef.Object;
+	}
+	else
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Can't find AttackMontage for robot 02!!"));
+	}
+
+	// Team Info
 	TeamFlag = 2;
+
+	// Character Stat
+	AttackSpeed = 0.8;
 	
 }
 

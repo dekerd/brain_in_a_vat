@@ -9,8 +9,9 @@ public class brain_in_a_vat : ModuleRules
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 	
 		PublicDependencyModuleNames.AddRange(new string[] { 
-			"Core", "CoreUObject", "Engine", "InputCore", "EnhancedInput", 
-			"AIModule", "NavigationSystem", "GamePlayTasks" 
+			"Core", "CoreUObject", "Engine", "InputCore", 
+			"EnhancedInput", "NavigationSystem", "AIModule",
+			"GameplayTasks", "GameplayAbilities", "GameplayTags"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });

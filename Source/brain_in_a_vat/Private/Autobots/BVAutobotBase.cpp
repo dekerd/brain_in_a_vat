@@ -5,6 +5,7 @@
 
 #include "AI/BVAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
+#include "GAS/CombatAttributeSet.h"
 #include "Components/CapsuleComponent.h"
 
 // Sets default values
@@ -15,10 +16,11 @@ ABVAutobotBase::ABVAutobotBase()
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
 	// Capsule
-	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.0f);
+	GetCapsuleComponent()->InitCapsuleSize(30.f, 42.0f);
 
 	// Mesh
-	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -100.0f), FRotator(0.0f, -90.0f, 0.0f));
+	float CapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
+	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -CapsuleHalfHeight), FRotator(0.0f, -90.0f, 0.0f));
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	
 	// Movement
@@ -34,6 +36,14 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->MaxWalkSpeed = 150.f;
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
+
+	// Crowd
+	GetCharacterMovement()->bUseRVOAvoidance = true;
+	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
+
+	// Gameplay Ability System (GAS)
+	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
+	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
 
 }
 
@@ -57,6 +67,42 @@ void ABVAutobotBase::BeginPlay()
 	{
 		AIController->SetGenericTeamId(FGenericTeamId(TeamFlag));
 	}
+
+	// Setting ASC
+	if (ASC)
+	{
+		ASC->InitAbilityActorInfo(this, this);
+		if (CombatAttributes)
+		{
+			ASC->GetGameplayAttributeValueChangeDelegate(CombatAttributes->GetHealthAttribute()).AddUObject(this, &ABVAutobotBase::OnHealthChanged);
+		}
+	}
+}
+
+void ABVAutobotBase::OnHealthChanged(const FOnAttributeChangeData& Data)
+{
+	const float NewHealth = Data.NewValue;
+	if (NewHealth <= 0.0f)
+	{
+		// TODO : Character Dead Handling
+	}
+}
+
+UAbilitySystemComponent* ABVAutobotBase::GetAbilitySystemComponent() const
+{
+	return ASC;
+}
+
+void ABVAutobotBase::Attack()
+{
+	if (!AttackMontage) return;
+	
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance && !AnimInstance->Montage_IsPlaying(AttackMontage))
+	{
+		AnimInstance->Montage_Play(AttackMontage, AttackSpeed);
+	}
+	
 }
 
 

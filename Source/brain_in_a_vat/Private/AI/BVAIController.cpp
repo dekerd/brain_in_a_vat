@@ -5,10 +5,12 @@
 #include "EngineUtils.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
+#include "Navigation/CrowdFollowingComponent.h"
 
 
 // Sets default values
-ABVAIController::ABVAIController()
+ABVAIController::ABVAIController(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UCrowdFollowingComponent>(TEXT("PathFollowingComponent")))
 {
 
 	// Blackboard and Behavior Tree
@@ -107,21 +109,44 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 	
 	APawn* ControllingPawn = GetPawn();
 	if (!ControllingPawn) return;
+
+	// UAIPerceptionComponent* PerceptionComponent = GetPerceptionComponent();
+	// if (!PerceptionComponent) return;
+
+	TArray<AActor*> PerceivedActors;
+	AIPerception->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), PerceivedActors);
 	
 	const FGenericTeamId MyTeamId = GetGenericTeamId();
-	
-	for (AActor* Actor : UpdatedActors)
+
+	float ClosestDistance = TNumericLimits<float>::Max();
+	AActor* ClosestTarget = nullptr;
+	for (AActor* Actor : PerceivedActors)
 	{
 		if (!Actor || Actor == ControllingPawn) continue;
 		
 		ETeamAttitude::Type Attitude = GetTeamAttitudeTowards(*Actor);
 		FString AttitudeStr = StaticEnum<ETeamAttitude::Type>()->GetValueAsString(Attitude);
 		
-		if (Attitude == ETeamAttitude::Hostile)
+		if (Attitude != ETeamAttitude::Hostile) continue;
+
+		// UE_LOG(LogTemp, Warning, TEXT("[%s] has detected the enemy : [%s]."), *ControllingPawn->GetName(), *Actor->GetName())
+
+		const float distance = FVector::DistSquared(ControllingPawn->GetActorLocation(), Actor->GetActorLocation());
+		if ( distance < ClosestDistance )
 		{
-			UE_LOG(LogTemp, Warning, TEXT("[%s] has detected the enemy : [%s]."), *ControllingPawn->GetName(), *Actor->GetName())
+			ClosestDistance = distance;
+			ClosestTarget = Actor;
 		}
 	}
+	
+	if (ClosestTarget)
+	{
+		BlackboardComponent->SetValueAsObject(TEXT("AttackTargetActor"), ClosestTarget);
+		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), ClosestTarget->GetActorLocation());
+		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), true);
+		UE_LOG(LogTemp, Warning, TEXT("[%s] tries to attack [%s]."), *ControllingPawn->GetName(), *ClosestTarget->GetName())
+	}
+	
 }
 
 

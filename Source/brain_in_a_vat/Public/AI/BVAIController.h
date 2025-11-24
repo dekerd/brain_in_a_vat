@@ -15,7 +15,7 @@ class BRAIN_IN_A_VAT_API ABVAIController : public AAIController
 
 public:
 	// Sets default values for this actor's properties
-	ABVAIController();
+	ABVAIController(const FObjectInitializer& ObjectInitializer);
 
 	void RunAI();
 	void StopAI();

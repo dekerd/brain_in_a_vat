@@ -14,7 +14,7 @@ class BRAIN_IN_A_VAT_API ABVAutobotBlue : public ABVAutobotBase
 public:
 	// Sets default values for this character's properties
 	ABVAutobotBlue();
-
+	
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;

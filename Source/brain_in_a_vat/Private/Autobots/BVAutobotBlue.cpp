@@ -19,8 +19,18 @@ ABVAutobotBlue::ABVAutobotBlue()
 		GetMesh()->SetAnimInstanceClass(AnimInstanceClassRef.Class);
 	}
 
+	static ConstructorHelpers::FObjectFinder<UAnimMontage> AttackMontageRef(TEXT("/Script/Engine.AnimMontage'/Game/SkeletalMesh/base_robot_01/Montage_Attack.Montage_Attack'"));
+	if (AttackMontageRef.Object)
+	{
+		AttackMontage = AttackMontageRef.Object;
+	}
+
+	
 	// Team Info
 	TeamFlag = 1;
+
+	// Character Stat
+	AttackSpeed = 1.3;
 
 }
 
