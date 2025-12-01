@@ -21,7 +21,19 @@ EBTNodeResult::Type UBTTask_AttackTargetEnemy::ExecuteTask(UBehaviorTreeComponen
 	ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(Pawn);
 	if (!Autobot) return EBTNodeResult::Failed;
 
+	Autobot->OnAttackFinished.AddUniqueDynamic(this, &UBTTask_AttackTargetEnemy::HandleAttackFinished);
 	Autobot->Attack();
 	
-	return EBTNodeResult::Succeeded;
+	return EBTNodeResult::InProgress;
+}
+
+void UBTTask_AttackTargetEnemy::HandleAttackFinished(AAIController* AIController)
+{
+	if (!AIController) return;
+
+	UBrainComponent* BrainComp = AIController->GetBrainComponent();
+	UBehaviorTreeComponent* BTComp = Cast<UBehaviorTreeComponent>(BrainComp);
+	if (!BTComp) return;
+
+	FinishLatentTask(*BTComp, EBTNodeResult::Succeeded);
 }

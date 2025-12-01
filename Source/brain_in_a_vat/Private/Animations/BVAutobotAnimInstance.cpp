@@ -20,6 +20,7 @@ void UBVAutobotAnimInstance::NativeInitializeAnimation()
 	{
 		MovementComponent = Owner->GetCharacterMovement();
 	}
+	bIsDead = 0;
 }
 
 void UBVAutobotAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
@@ -33,6 +34,5 @@ void UBVAutobotAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 		bIsIdle = GroundSpeed < MovingThreshold;
 		bIsFalling = MovementComponent->IsFalling();
 		bIsJumping = bIsFalling & (Velocity.Z > JumpingThreshold);
-		
 	}
 }

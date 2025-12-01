@@ -18,4 +18,7 @@ public:
 	UBTTask_AttackTargetEnemy();
 
 	virtual EBTNodeResult::Type ExecuteTask(UBehaviorTreeComponent& OwnerComp, uint8* NodeMemory) override;
+
+	UFUNCTION()
+	void HandleAttackFinished(AAIController* AIController);
 };

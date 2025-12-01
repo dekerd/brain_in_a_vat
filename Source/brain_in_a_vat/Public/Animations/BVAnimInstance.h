@@ -17,6 +17,9 @@ class BRAIN_IN_A_VAT_API UBVAnimInstance : public UAnimInstance
 public:
 	UBVAnimInstance();
 
+	UFUNCTION()
+	void SetIsDead();
+
 protected:
 
 	virtual void NativeInitializeAnimation() override;
@@ -36,10 +39,15 @@ protected:
 	float GroundSpeed;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
-	uint8 bIsIdle : 1;
+	float JumpingThreshold;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
 	float MovingThreshold;
+
+	// States
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
+	uint8 bIsIdle : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
 	uint8 bIsFalling : 1;
@@ -48,6 +56,6 @@ protected:
 	uint8 bIsJumping : 1;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
-	float JumpingThreshold;
+	uint8 bIsDead : 1;
 	
 };

@@ -4,6 +4,7 @@
 #include "AI/BTService/BTService_UpdateClosestEnemy.h"
 #include "AIController.h"
 #include "AI/BVAIController.h"
+#include "Autobots/BVAutobotBase.h"
 #include "Perception/AIPerceptionComponent.h"
 #include "BehaviorTree/BlackboardComponent.h"
 
@@ -41,6 +42,10 @@ void UBTService_UpdateClosestEnemy::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	{
 		if (!Actor || Actor == Pawn) continue;
 		if (AIController->GetTeamAttitudeTowards(*Actor) != ETeamAttitude::Hostile) continue;
+		if (ABVAutobotBase* TargetBot = Cast<ABVAutobotBase>(Actor))
+		{
+			if (TargetBot->bIsDead) continue;
+		}
 
 		float Dist = FVector::DistSquared(Pawn->GetActorLocation(), Actor->GetActorLocation());
 		if (Dist < Closest)

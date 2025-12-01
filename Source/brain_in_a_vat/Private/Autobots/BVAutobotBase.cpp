@@ -7,6 +7,13 @@
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Components/CapsuleComponent.h"
+#include "AbilitySystemInterface.h"
+#include "GAS/GASTags.h"
+#include "BehaviorTree/BlackboardComponent.h"
+#include "BrainComponent.h"
+#include "Animations/BVAnimInstance.h"
+#include "Components/WidgetComponent.h"
+#include "Widget/BVHealthBarWidget.h"
 
 // Sets default values
 ABVAutobotBase::ABVAutobotBase()
@@ -41,9 +48,34 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->bUseRVOAvoidance = true;
 	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
 
+	// UI
+	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidgetComponent"));
+	HealthBarWidgetComponent->SetupAttachment(RootComponent);
+	HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	HealthBarWidgetComponent->SetDrawSize(FVector2D(100.f, 10.f));
+	HealthBarWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
+
+	static ConstructorHelpers::FClassFinder<UUserWidget> HealthBarWidgetClassRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_HealthBar.WBP_HealthBar_C'"));
+	if (HealthBarWidgetClassRef.Succeeded())
+	{
+		HealthBarWidgetClass = HealthBarWidgetClassRef.Class;
+		HealthBarWidgetComponent->SetWidgetClass(HealthBarWidgetClass);
+	}
+	
 	// Gameplay Ability System (GAS)
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
+	ASC->SetIsReplicated(true);
+	ASC->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
+	
 	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
+
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_MeleeDamage.GE_MeleeDamage_C'"));
+	if (DamageGEClass.Succeeded())
+	{
+		DamageEffect = DamageGEClass.Class;
+	}
+
+
 
 }
 
@@ -69,7 +101,7 @@ void ABVAutobotBase::BeginPlay()
 	}
 
 	// Setting ASC
-	if (ASC)
+	if (ASC && CombatAttributes)
 	{
 		ASC->InitAbilityActorInfo(this, this);
 		if (CombatAttributes)
@@ -77,15 +109,95 @@ void ABVAutobotBase::BeginPlay()
 			ASC->GetGameplayAttributeValueChangeDelegate(CombatAttributes->GetHealthAttribute()).AddUObject(this, &ABVAutobotBase::OnHealthChanged);
 		}
 	}
+
+	// Setting Widget
+	if (HealthBarWidgetComponent)
+	{
+		if (UUserWidget* Widget = HealthBarWidgetComponent->GetUserWidgetObject())
+		{
+			if (UBVHealthBarWidget* HealthBar = Cast<UBVHealthBarWidget>(Widget))
+			{
+				HealthBar->InitWithOwner(this);
+			}
+		}
+	}
+
+	// Setting Material
+	
+	FadeMIDs.Empty();
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	int32 MatCount = MeshComp->GetNumMaterials();
+	for (int32 i = 0; i < MatCount; ++i)
+	{
+		UMaterialInstanceDynamic* MID = MeshComp->CreateAndSetMaterialInstanceDynamic(i);
+		if (MID)
+		{
+			MID->SetScalarParameterValue(TEXT("Opacity"), 1.0f);
+			FadeMIDs.Add(MID);
+		}
+	}
+}
+
+void ABVAutobotBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (bIsFading)
+	{
+		FadeElapsed += DeltaTime;
+		float Alpha = FMath::Clamp(FadeElapsed/FadeDuration, 0.0f, 1.0f);
+
+		float NewOpacity = 1.0f - Alpha;
+		for (UMaterialInstanceDynamic* MID : FadeMIDs)
+		{
+			if (MID) {MID->SetScalarParameterValue(TEXT("Opacity"), NewOpacity);}
+		}
+
+	}
+}
+
+void ABVAutobotBase::SetHovered(bool bInHovered)
+{
+	
+}
+
+void ABVAutobotBase::StartFadeOut()
+{
+	if (bIsFading) return;
+	
+	bIsFading = true;
+	FadeElapsed = 0.0f;
+	
 }
 
 void ABVAutobotBase::OnHealthChanged(const FOnAttributeChangeData& Data)
 {
+
+	UE_LOG(LogTemp, Warning, TEXT("%s Health : %.1f -> %.1f"), *GetName(), Data.OldValue, Data.NewValue)
 	const float NewHealth = Data.NewValue;
-	if (NewHealth <= 0.0f)
+	const float MaxHealth = CombatAttributes->GetMaxHealth();
+
+	float Ratio = 0.f;
+	if (MaxHealth > 0.f) Ratio = NewHealth / MaxHealth;
+
+	OnHealthChangedUI.Broadcast(Ratio);
+	
+	if (NewHealth <= 0.0f && !bIsDead)
 	{
-		// TODO : Character Dead Handling
+		UE_LOG(LogTemp, Warning, TEXT("%s is Dead!"), *GetName())
+		Dead();
 	}
+}
+
+void ABVAutobotBase::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)
+{
+	if (UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance())
+	{
+		AnimInstance->OnMontageEnded.RemoveDynamic(this, &ABVAutobotBase::OnAttackMontageEnded);
+	}
+	
+	AAIController* AIController = Cast<AAIController>(GetController());
+	OnAttackFinished.Broadcast(AIController);
 }
 
 UAbilitySystemComponent* ABVAutobotBase::GetAbilitySystemComponent() const
@@ -98,10 +210,127 @@ void ABVAutobotBase::Attack()
 	if (!AttackMontage) return;
 	
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+
+	AnimInstance->OnMontageEnded.AddDynamic(this, &ABVAutobotBase::OnAttackMontageEnded);
+	
 	if (AnimInstance && !AnimInstance->Montage_IsPlaying(AttackMontage))
 	{
 		AnimInstance->Montage_Play(AttackMontage, AttackSpeed);
 	}
+	
+}
+
+void ABVAutobotBase::Dead()
+{
+
+	if (bIsDead) return;
+	bIsDead = true;
+
+	// Stop Movement
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->DisableMovement();
+	}
+	GetCapsuleComponent()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Set AnimInstance bIsDead to 1
+	if (UBVAnimInstance* BVAnim = Cast<UBVAnimInstance>(GetMesh()->GetAnimInstance()))
+	{
+		BVAnim->SetIsDead();
+	}
+
+	// Stop AI
+	if (ABVAIController* AIController = Cast<ABVAIController>(GetController()) )
+	{
+		if (UBrainComponent* BrainComp = AIController->GetBrainComponent())
+		{
+			BrainComp->StopLogic(TEXT("Dead"));
+		}
+
+		AIController->StopMovement();
+	}
+
+	// Hide Widget
+	HealthBarWidgetComponent->SetVisibility(false);
+	
+	// Destroy this object 
+	FTimerHandle DeadTimerHandle;
+	GetWorld()->GetTimerManager().SetTimer(
+		DeadTimerHandle,
+		FTimerDelegate::CreateLambda([this]()
+		{
+			Destroy();
+		}),
+		4.0f,
+		false);
+
+}
+
+void ABVAutobotBase::PerformAttackHit()
+{
+	// This function is called by anim montage notifier
+	// This function finds and validates the attack target
+	// And call GAS function to finalize the damage application
+	
+	ABVAIController* AIController = Cast<ABVAIController>(GetController());
+	if (!AIController)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No AIController"));
+		return;
+	}
+
+	UBlackboardComponent* BB = AIController->GetBlackboardComponent();
+	if (!BB)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No BB"));
+		return;
+	}
+
+	static const FName TargetKeyName(TEXT("AttackTargetActor"));
+	AActor* TargetActor = Cast<AActor>(BB->GetValueAsObject(TargetKeyName));
+
+	if (!TargetActor)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No Target Actor!"));
+		return;
+	}
+	
+
+	ApplyDamageToTarget(TargetActor);
+}
+
+void ABVAutobotBase::ApplyDamageToTarget(AActor* TargetActor)
+{
+	
+	if (!ASC || !DamageEffect || !CombatAttributes || !TargetActor) return;
+
+	IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(TargetActor);
+	if (!TargetASI)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ApplyDamageToTarget() - No Target ASI!"));
+		return;
+	}
+
+	UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent();
+	if (!TargetASC)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("ApplyDamageToTarget() - No Target ASC!"));
+		return;
+	}
+
+	FGameplayEffectContextHandle ContextHandle = ASC->MakeEffectContext();
+	ContextHandle.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(DamageEffect, 1.f, ContextHandle);
+	if (!SpecHandle.IsValid()) return;
+
+	const float AttackDamage = CombatAttributes->GetAttackDamage();
+
+	SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -AttackDamage);
+
+	ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+
+	UE_LOG(LogTemp, Log, TEXT("%s attacks %s for %.1f damage"), *GetName(), *TargetActor->GetName(), AttackDamage);
 	
 }
 

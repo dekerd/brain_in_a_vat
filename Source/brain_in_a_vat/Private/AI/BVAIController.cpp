@@ -3,14 +3,14 @@
 
 #include "AI/BVAIController.h"
 #include "EngineUtils.h"
+#include "Autobots/BVAutobotBase.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Navigation/CrowdFollowingComponent.h"
 
 
 // Sets default values
-ABVAIController::ABVAIController(const FObjectInitializer& ObjectInitializer)
-	: Super(ObjectInitializer.SetDefaultSubobjectClass<UCrowdFollowingComponent>(TEXT("PathFollowingComponent")))
+ABVAIController::ABVAIController()
 {
 
 	// Blackboard and Behavior Tree
@@ -32,7 +32,7 @@ ABVAIController::ABVAIController(const FObjectInitializer& ObjectInitializer)
 
 	SightConfig->SightRadius = 1000.f;
 	SightConfig->LoseSightRadius = 2000.f;
-	SightConfig->PeripheralVisionAngleDegrees = 70.f;
+	SightConfig->PeripheralVisionAngleDegrees = 360.f;
 
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
 	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
@@ -118,6 +118,18 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 	
 	const FGenericTeamId MyTeamId = GetGenericTeamId();
 
+	// Sticky Target
+	AActor* CurrentTarget = Cast<AActor>(BlackboardComponent->GetValueAsObject(TEXT("AttackTargetActor")));
+	if (CurrentTarget)
+	{
+		if (GetTeamAttitudeTowards(*CurrentTarget) == ETeamAttitude::Hostile)
+		{
+			const float MaxStickDistance = 1000.f;
+			const float DistSq = FVector::DistSquared(ControllingPawn->GetActorLocation(), CurrentTarget->GetActorLocation());
+			if (DistSq < MaxStickDistance * MaxStickDistance) return;
+		}
+	}
+
 	float ClosestDistance = TNumericLimits<float>::Max();
 	AActor* ClosestTarget = nullptr;
 	for (AActor* Actor : PerceivedActors)
@@ -129,7 +141,10 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 		
 		if (Attitude != ETeamAttitude::Hostile) continue;
 
-		// UE_LOG(LogTemp, Warning, TEXT("[%s] has detected the enemy : [%s]."), *ControllingPawn->GetName(), *Actor->GetName())
+		if (ABVAutobotBase* TargetBot = Cast<ABVAutobotBase>(Actor))
+		{
+			if (TargetBot->bIsDead) continue;
+		}
 
 		const float distance = FVector::DistSquared(ControllingPawn->GetActorLocation(), Actor->GetActorLocation());
 		if ( distance < ClosestDistance )

@@ -25,6 +25,11 @@ ABVAutobotBlue::ABVAutobotBlue()
 		AttackMontage = AttackMontageRef.Object;
 	}
 
+	static ConstructorHelpers::FObjectFinder<UAnimMontage> DeathMontageRef(TEXT("/Script/Engine.AnimMontage'/Game/SkeletalMesh/base_robot_01/Montage_Death.Montage_Death'"));
+	{
+		DeathMontage = DeathMontageRef.Object;
+	}
+
 	
 	// Team Info
 	TeamFlag = 1;

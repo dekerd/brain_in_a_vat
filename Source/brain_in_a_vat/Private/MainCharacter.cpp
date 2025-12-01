@@ -11,6 +11,8 @@
 #include "InputMappingContext.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "DrawDebugHelpers.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -89,6 +91,12 @@ AMainCharacter::AMainCharacter()
 		JumpAction = InputActionJumpRef.Object;
 	}
 
+	static ConstructorHelpers::FObjectFinder<UInputAction> RightClickMoveActionRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_RightClickMove.IA_RightClickMove'"));
+	if (RightClickMoveActionRef.Succeeded())
+	{
+		RightClickMoveAction = RightClickMoveActionRef.Object;
+	}
+
 }
 
 // Called when the game starts or when spawned
@@ -119,7 +127,7 @@ void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputCompo
 
 	EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMainCharacter::Move);
 	EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &AMainCharacter::Jump);
-
+	EnhancedInputComponent->BindAction(RightClickMoveAction, ETriggerEvent::Started, this, &AMainCharacter::MoveToLocation);
 }
 
 void AMainCharacter::Move(const FInputActionValue& Value)
@@ -149,6 +157,26 @@ void AMainCharacter::Move(const FInputActionValue& Value)
 
 void AMainCharacter::Look(const FInputActionValue& Value)
 {
+	
+}
+
+void AMainCharacter::MoveToLocation(const FInputActionValue& Value)
+{
+	// Right Click Move
+
+	APlayerController* PlayerController = Cast<APlayerController>(GetController());
+	if (!PlayerController) return;
+	
+	FHitResult Hit;
+	bool bHit = PlayerController->GetHitResultUnderCursor(ECC_Visibility, false, Hit);
+	if (!bHit) return;
+
+	const FVector DestLocation = Hit.ImpactPoint;
+
+	// Debug
+	DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
+	
+	UAIBlueprintHelperLibrary::SimpleMoveToLocation(Controller, DestLocation);
 	
 }
 

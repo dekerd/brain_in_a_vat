@@ -1,10 +1,10 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
-
+#include "AI/BTTask/BTTask_GetCubeLocation.h"
 #include "AIController.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "AI/BVAIController.h"
-#include "AI/BTTask/BTTask_GetCubeLocation.h"
+
 
 UBTTask_GetCubeLocation::UBTTask_GetCubeLocation()
 {

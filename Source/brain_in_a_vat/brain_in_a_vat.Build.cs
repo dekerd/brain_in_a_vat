@@ -11,7 +11,8 @@ public class brain_in_a_vat : ModuleRules
 		PublicDependencyModuleNames.AddRange(new string[] { 
 			"Core", "CoreUObject", "Engine", "InputCore", 
 			"EnhancedInput", "NavigationSystem", "AIModule",
-			"GameplayTasks", "GameplayAbilities", "GameplayTags"
+			"GameplayTasks", "GameplayAbilities", "GameplayTags",
+			"UMG"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });

@@ -18,6 +18,8 @@ class BRAIN_IN_A_VAT_API ABVPlayerController : public APlayerController, public 
 public:
 	virtual FGenericTeamId GetGenericTeamId() const override { return TeamID; }
 	virtual void SetGenericTeamId(const FGenericTeamId& InTeamID) override { TeamID = InTeamID; }
+
+	ABVPlayerController();
 	
 protected:
 	virtual void BeginPlay() override;
