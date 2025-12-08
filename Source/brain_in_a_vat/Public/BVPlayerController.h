@@ -23,6 +23,11 @@ public:
 	
 protected:
 	virtual void BeginPlay() override;
+
+	virtual void PlayerTick(float DeltaTime) override;
+
+	UPROPERTY()
+	TObjectPtr<class ABVAutobotBase> HoveredUnit;
 	
 private:
 	FGenericTeamId TeamID = FGenericTeamId(1);

@@ -58,8 +58,8 @@ AMainCharacter::AMainCharacter()
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 
-	CameraBoom->TargetArmLength = 500.0f;
-	CameraBoom->SetRelativeRotation(FRotator(-50.f, 0.f, 0.f));
+	CameraBoom->TargetArmLength = 1300.0f;
+	CameraBoom->SetRelativeRotation(FRotator(-65.f, 0.f, 0.f));
 	CameraBoom->bUsePawnControlRotation = false;
 	
 	// --> For Quarter View

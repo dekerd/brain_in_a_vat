@@ -12,7 +12,9 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "BrainComponent.h"
 #include "Animations/BVAnimInstance.h"
+#include "Collision/BVCollision.h"
 #include "Components/WidgetComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
 
 // Sets default values
@@ -25,10 +27,11 @@ ABVAutobotBase::ABVAutobotBase()
 	// Capsule
 	GetCapsuleComponent()->InitCapsuleSize(30.f, 42.0f);
 
-	// Mesh
+	// Mesh and Collision
 	float CapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -CapsuleHalfHeight), FRotator(0.0f, -90.0f, 0.0f));
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
+	GetMesh()->SetCollisionProfileName(TEXT("Hoverable"));
 	
 	// Movement
 	bUseControllerRotationPitch = false;
@@ -52,7 +55,7 @@ ABVAutobotBase::ABVAutobotBase()
 	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidgetComponent"));
 	HealthBarWidgetComponent->SetupAttachment(RootComponent);
 	HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	HealthBarWidgetComponent->SetDrawSize(FVector2D(100.f, 10.f));
+	HealthBarWidgetComponent->SetDrawSize(FVector2D(100.f, 5.f));
 	HealthBarWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 
 	static ConstructorHelpers::FClassFinder<UUserWidget> HealthBarWidgetClassRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_HealthBar.WBP_HealthBar_C'"));
@@ -92,6 +95,13 @@ FGenericTeamId ABVAutobotBase::GetGenericTeamId() const
 void ABVAutobotBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// Disable Jitter Effect of Hovering
+	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), TEXT("r.CustomDepthTemporalAAJitter 0"));
+
+	GetMesh()->SetCollisionProfileName(TEXT("Hoverable"));
+
+	UE_LOG(LogTemp, Warning, TEXT("MeshProfile=%s, MouseHoverResponse=%d"), *GetMesh()->GetCollisionProfileName().ToString(), (int32)GetMesh()->GetCollisionResponseToChannel(ECC_MouseHover));
 
 	// Setting Team Information
 	AAIController* AIController = Cast<AAIController>(GetController());
@@ -158,6 +168,22 @@ void ABVAutobotBase::Tick(float DeltaTime)
 
 void ABVAutobotBase::SetHovered(bool bInHovered)
 {
+
+	bIsHovered = bInHovered;
+	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
+	{
+		uint8 Stencil = 0;
+
+		if (bIsHovered)
+		{
+			const bool bIsEnemy = (TeamFlag != 1);
+			Stencil = bIsEnemy ? 2 : 1;
+		}
+		
+		CharacterMesh->SetRenderCustomDepth(bIsHovered);
+		CharacterMesh->SetCustomDepthStencilValue(Stencil);
+		UE_LOG(LogTemp, Warning, TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+	}
 	
 }
 
@@ -255,6 +281,9 @@ void ABVAutobotBase::Dead()
 	
 	// Destroy this object 
 	FTimerHandle DeadTimerHandle;
+	SetLifeSpan(4.0f);
+	
+	/*
 	GetWorld()->GetTimerManager().SetTimer(
 		DeadTimerHandle,
 		FTimerDelegate::CreateLambda([this]()
@@ -263,6 +292,7 @@ void ABVAutobotBase::Dead()
 		}),
 		4.0f,
 		false);
+	*/
 
 }
 
