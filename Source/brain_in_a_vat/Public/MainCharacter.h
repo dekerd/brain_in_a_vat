@@ -28,6 +28,8 @@ public:
 	// Called to bind functionality to input
 	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
 
+	uint32 GetTeamFlag() const { return TeamFlag; }
+
 protected:
 	UPROPERTY(EditAnywhere, Category="Mesh")
 	TObjectPtr<class USkeletalMeshComponent> SkeletalMeshComponent;
@@ -38,6 +40,8 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category="Camera")
 	TObjectPtr<class USpringArmComponent> CameraBoom;
 
+
+	// Input Setting
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	TObjectPtr<class UInputMappingContext> InputMappingContext; 
 
@@ -54,9 +58,44 @@ protected:
 	void Look(const FInputActionValue& Value);
 	void MoveToLocation(const FInputActionValue& Value);
 
+	// Team Setting
 	UPROPERTY()
-	uint32 TeamFlag;
+	uint32 TeamFlag = 1;
 
 	virtual FGenericTeamId GetGenericTeamId() const override;
+
+	// Weapon & Attack Setting
+
+	UPROPERTY(EditAnywhere, Category="Combat")
+	TObjectPtr<class USphereComponent> AttackRangeSphere;
+
+	float FireInterval = 1.0f;
+	float AttackRange = 600.f;
+	float TimeSinceLastShot = 0.f;
+
+	UPROPERTY()
+	TArray<TWeakObjectPtr<class ABVAutobotBase>> EnemiesInRange;
+
+	UFUNCTION()
+	void OnAttackRangeBeginOverlap(
+		UPrimitiveComponent* OverlappedComp,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex,
+		bool bFromSweep,
+		const FHitResult& SweepResult);
+
+	UFUNCTION()
+	void OnAttackRangeEndOverlap(
+		UPrimitiveComponent* OverlappedComp,
+		AActor* OtherActor,
+		UPrimitiveComponent* OtherComp,
+		int32 OtherBodyIndex);
+
+	void AutoFire(float DeltaSecond);
+
+	class ABVAutobotBase* FindNearestEnemyInRange() const;
+
+	void FireToTarget(ABVAutobotBase* Target);
 
 };

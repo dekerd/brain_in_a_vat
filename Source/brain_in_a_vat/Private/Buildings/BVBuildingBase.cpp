@@ -4,14 +4,36 @@
 #include "Buildings/BVBuildingBase.h"
 #include "Autobots/BVAutobotBase.h"
 #include "Components/WidgetComponent.h"
+#include "Components/CapsuleComponent.h"
+#include "Components/BVHealthComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
 #include "DrawDebugHelpers.h"
+#include "Widget/BVHealthBarWidget.h"
+#include "GAS/CombatAttributeSet.h"
 
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
 {
-	// Widget
+	// Root Component
+	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Capsule"));
+	RootComponent = CapsuleComponent;
+	CapsuleComponent->InitCapsuleSize(20.f, 30.f);
+	CapsuleComponent->SetCollisionProfileName(TEXT("BlockAll"));
+	
+	// HealthBar Widget
+	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidget"));
 
+	static ConstructorHelpers::FClassFinder<UBVHealthBarWidget> HealthBarWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_HealthBar.WBP_HealthBar_C'"));
+	if (HealthBarWidgetRef.Succeeded())
+	{
+		HealthBarWidgetClass = HealthBarWidgetRef.Class;
+		HealthBarWidgetComponent->SetWidgetClass(HealthBarWidgetClass);
+	}
+	
+	HealthBarWidgetComponent->SetupAttachment(RootComponent);
+	HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	
+	// Respawn Cooltime Widget
 	RespawnWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("RespawnWidget"));
 
 	static ConstructorHelpers::FClassFinder<UBVSpawnCooltimeBar> SpawnWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_SpawnCooltimeBar.WBP_SpawnCooltimeBar_C'"));
@@ -43,6 +65,22 @@ void ABVBuildingBase::Tick(float DeltaTime)
 	}
 }
 
+void ABVBuildingBase::DestroyBuilding()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[%s] has been destroyed!"), *GetName());
+	bIsDestroyed = true;
+}
+
+FGenericTeamId ABVBuildingBase::GetGenericTeamId() const
+{
+	return IGenericTeamAgentInterface::GetGenericTeamId();
+}
+
+UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
+{
+	return ASC;	
+}
+
 // Called when the game starts or when spawned
 void ABVBuildingBase::BeginPlay()
 {
@@ -54,6 +92,9 @@ void ABVBuildingBase::BeginPlay()
 
 	RespawnWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 50.f));
 	RespawnWidgetComponent->SetDrawSize(FVector2D(200.f, 10.f));
+	
+	HealthBarWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 62.f));
+	HealthBarWidgetComponent->SetDrawSize(FVector2D(200.f, 10.f));
 
 
 	if (UUserWidget* UserWidget = RespawnWidgetComponent->GetUserWidgetObject())
@@ -71,7 +112,7 @@ void ABVBuildingBase::BeginPlay()
 			&ABVBuildingBase::SpawnUnit,
 			RespawnInterval,
 			true,
-			0.0f
+			RespawnInterval
 			);
 	}
 	

@@ -3,33 +3,30 @@
 
 #include "Widget/BVHealthBarWidget.h"
 #include "Components/ProgressBar.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Components/BVHealthComponent.h"
 
-void UBVHealthBarWidget::InitWithOwner(ABVAutobotBase* InOwner)
+void UBVHealthBarWidget::InitWithHealthComponent(UBVHealthComponent* InHealthComponent)
 {
-	OwnerAutobot = InOwner;
-	if (!OwnerAutobot) return;
+	HealthComponent = InHealthComponent;
+	if (!HealthComponent || !HealthProgressBar) return;
 
-	OwnerAutobot->OnHealthChangedUI.AddDynamic(this, &UBVHealthBarWidget::HandleHealthChanged);
+	HealthComponent->OnHealthChangedUI.AddDynamic(this, &UBVHealthBarWidget::HandleHealthChanged);
 	
 	// Initialization
-	if (HealthProgressBar)
-	{
-		const float Health = OwnerAutobot->GetCombatAttributeSet()->GetHealth();
-		const float MaxHealth = OwnerAutobot->GetCombatAttributeSet()->GetMaxHealth();
-		const float Ratio = (MaxHealth > 0.f) ? (Health / MaxHealth) : 0.f;
+	const float Ratio = HealthComponent->GetHealthRatio();
+	HealthProgressBar->SetPercent(Ratio);
 
-		if (OwnerAutobot->TeamFlag == 1)
-		{
-			HealthProgressBar->SetFillColorAndOpacity(FLinearColor::Green);
-		}
-		else if (OwnerAutobot->TeamFlag == 2)
-		{
-			HealthProgressBar->SetFillColorAndOpacity(FLinearColor::Red);
-		}
-		
-		HealthProgressBar->SetPercent(Ratio);
+	// Apply different colors by team info
+
+	if (HealthComponent->GetOwnerTeamFlag() == 1)
+	{
+		HealthProgressBar->SetFillColorAndOpacity(FLinearColor::Green);
 	}
+	else if (HealthComponent->GetOwnerTeamFlag() == 2)
+	{
+		HealthProgressBar->SetFillColorAndOpacity(FLinearColor::Red);
+	}
+
 }
 
 void UBVHealthBarWidget::HandleHealthChanged(float NewRatio)

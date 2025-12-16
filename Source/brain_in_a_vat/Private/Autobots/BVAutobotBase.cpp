@@ -14,6 +14,7 @@
 #include "Animations/BVAnimInstance.h"
 #include "Collision/BVCollision.h"
 #include "Components/WidgetComponent.h"
+#include "Components/BVHealthComponent.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
 
@@ -51,11 +52,14 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->bUseRVOAvoidance = true;
 	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
 
-	// UI
+	// HealthComponent
+	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
+
+	// HealthBar Widget
 	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidgetComponent"));
 	HealthBarWidgetComponent->SetupAttachment(RootComponent);
 	HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	HealthBarWidgetComponent->SetDrawSize(FVector2D(100.f, 5.f));
+	HealthBarWidgetComponent->SetDrawSize(FVector2D(60.f, 5.f));
 	HealthBarWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
 
 	static ConstructorHelpers::FClassFinder<UUserWidget> HealthBarWidgetClassRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_HealthBar.WBP_HealthBar_C'"));
@@ -77,8 +81,6 @@ ABVAutobotBase::ABVAutobotBase()
 	{
 		DamageEffect = DamageGEClass.Class;
 	}
-
-
 
 }
 
@@ -110,14 +112,15 @@ void ABVAutobotBase::BeginPlay()
 		AIController->SetGenericTeamId(FGenericTeamId(TeamFlag));
 	}
 
-	// Setting ASC
+	// [GAS] Setting ASC
 	if (ASC && CombatAttributes)
 	{
 		ASC->InitAbilityActorInfo(this, this);
-		if (CombatAttributes)
+		if (HealthComponent)
 		{
-			ASC->GetGameplayAttributeValueChangeDelegate(CombatAttributes->GetHealthAttribute()).AddUObject(this, &ABVAutobotBase::OnHealthChanged);
+			HealthComponent->InitFromGAS(ASC, CombatAttributes);
 		}
+		
 	}
 
 	// Setting Widget
@@ -127,7 +130,7 @@ void ABVAutobotBase::BeginPlay()
 		{
 			if (UBVHealthBarWidget* HealthBar = Cast<UBVHealthBarWidget>(Widget))
 			{
-				HealthBar->InitWithOwner(this);
+				HealthBar->InitWithHealthComponent(HealthComponent);
 			}
 		}
 	}
@@ -194,25 +197,6 @@ void ABVAutobotBase::StartFadeOut()
 	bIsFading = true;
 	FadeElapsed = 0.0f;
 	
-}
-
-void ABVAutobotBase::OnHealthChanged(const FOnAttributeChangeData& Data)
-{
-
-	UE_LOG(LogTemp, Warning, TEXT("%s Health : %.1f -> %.1f"), *GetName(), Data.OldValue, Data.NewValue)
-	const float NewHealth = Data.NewValue;
-	const float MaxHealth = CombatAttributes->GetMaxHealth();
-
-	float Ratio = 0.f;
-	if (MaxHealth > 0.f) Ratio = NewHealth / MaxHealth;
-
-	OnHealthChangedUI.Broadcast(Ratio);
-	
-	if (NewHealth <= 0.0f && !bIsDead)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("%s is Dead!"), *GetName())
-		Dead();
-	}
 }
 
 void ABVAutobotBase::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted)

@@ -12,7 +12,7 @@ public class brain_in_a_vat : ModuleRules
 			"Core", "CoreUObject", "Engine", "InputCore", 
 			"EnhancedInput", "NavigationSystem", "AIModule",
 			"GameplayTasks", "GameplayAbilities", "GameplayTags",
-			"UMG"
+			"UMG", "Niagara", "NiagaraCore"
 		});
 
 		PrivateDependencyModuleNames.AddRange(new string[] {  });

@@ -8,7 +8,7 @@ UCombatAttributeSet::UCombatAttributeSet()
 
 	InitMaxHealth(100.f);
 	InitHealth(100.f);
-	InitAttackDamage(10.f);
+	InitAttackDamage(25.f);
 	InitDefense(0.f);
 	
 }

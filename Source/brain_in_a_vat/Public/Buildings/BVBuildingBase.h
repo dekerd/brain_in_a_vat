@@ -4,10 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "GameFramework/Actor.h"
+#include "AbilitySystemInterface.h"
+#include "AbilitySystemComponent.h"
+#include "GenericTeamAgentInterface.h"
 #include "BVBuildingBase.generated.h"
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVBuildingBase : public AActor
+class BRAIN_IN_A_VAT_API ABVBuildingBase : public AActor, public IGenericTeamAgentInterface, public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
@@ -16,6 +19,20 @@ public:
 	ABVBuildingBase();
 
 	virtual void Tick(float DeltaTime) override;
+
+	// Basic Properties
+	void DestroyBuilding();
+	bool bIsDestroyed = false;
+
+	// Team Info
+	virtual FGenericTeamId GetGenericTeamId() const override;
+
+	// GAS Public Getter
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	class UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
+
+	// Interface
+	uint32 GetTeamFlag() const { return TeamFlag; }
 
 protected:
 
@@ -28,6 +45,21 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mesh")
 	TObjectPtr<class UStaticMeshComponent> StaticMeshComponent;
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class UBVHealthComponent> HealthComponent;
+
+	// Properties
+	UPROPERTY()
+	uint32 TeamFlag;
+
+	// Gameplay Ability System (GAS)
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+	TObjectPtr<UAbilitySystemComponent> ASC;
+
+	UPROPERTY()
+	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
+
 	// Unit Spawning
 	UPROPERTY()
 	TSubclassOf<class ABVAutobotBase> SpawnUnitClass;
@@ -35,6 +67,9 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Spawn Unit")
 	float RespawnInterval = 10.f;
 	float ElapsedTime;
+
+	UFUNCTION()
+	void SpawnUnit();
 	
 	// Respawn Cooltime Widget
 	
@@ -49,8 +84,12 @@ protected:
 
 	FTimerHandle SpawnTimerHandle;
 
-	UFUNCTION()
-	void SpawnUnit();
+	// HealthBar Widget
 
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	UWidgetComponent* HealthBarWidgetComponent;
+
+	UPROPERTY()
+	TSubclassOf<UUserWidget> HealthBarWidgetClass;
 	
 };

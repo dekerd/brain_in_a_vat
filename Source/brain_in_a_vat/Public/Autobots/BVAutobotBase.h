@@ -11,9 +11,10 @@
 #include "BVAutobotBase.generated.h"
 
 class UWidgetComponent;
+class UBVHealthComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttackFinished, AAIController*, AIController);
-DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChangedUI, float, NewHealthRatio);
+// DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChangedUI, float, NewHealthRatio);
 
 UCLASS()
 class BRAIN_IN_A_VAT_API ABVAutobotBase : public ACharacter, public IGenericTeamAgentInterface, public IAbilitySystemInterface
@@ -23,25 +24,41 @@ class BRAIN_IN_A_VAT_API ABVAutobotBase : public ACharacter, public IGenericTeam
 public:
 	ABVAutobotBase();
 
-	// Team Info
+////// Team Info
 	virtual FGenericTeamId GetGenericTeamId() const override;
+
+////// Gameplay Ability System (GAS)
 	
-	UPROPERTY()
-	uint32 TeamFlag;
-	
-	// Gameplay Ability System (GAS)
+public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
 	UFUNCTION(BlueprintPure, Category = "GAS")
 	UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
+	
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+	TObjectPtr<UAbilitySystemComponent> ASC;
 
-	// Basic Functionalities
+	UPROPERTY()
+	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
+	TSubclassOf<class UGameplayEffect> DamageEffect;
+
+////// HealthBar Components
+
+public:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UBVHealthComponent> HealthComponent;
+	
+////// Basic Functionalities
+
+public:
 	void Attack();
 	void Dead();
 	bool bIsDead = false;
 
 	// UI
-
 	UFUNCTION()
 	void SetHovered(bool bInHovered);
 	
@@ -56,14 +73,23 @@ public:
 	UPROPERTY(BlueprintAssignable)
 	FOnAttackFinished OnAttackFinished;
 
+	/*
 	UPROPERTY(BlueprintAssignable, Category = "UI")
 	FOnHealthChangedUI OnHealthChangedUI;
+	*/
+	
+	// Interface
+	uint32 GetTeamFlag() const { return TeamFlag; }
 	
 protected:
-	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
 
 	virtual void Tick(float DeltaTime) override;
+
+	// Properties
+
+	UPROPERTY()
+	uint32 TeamFlag;
 	
 	UPROPERTY()
 	bool bHasTarget = false;
@@ -78,23 +104,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UAnimMontage> DeathMontage;
 
-	
-	// Gameplay Ability System (GAS)
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
-	TObjectPtr<UAbilitySystemComponent> ASC;
-
-	UPROPERTY()
-	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
-
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
-	TSubclassOf<class UGameplayEffect> DamageEffect;
-	
-	void OnHealthChanged(const FOnAttributeChangeData& Data);
-
 	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	// Widget
+	// HealthBar Widget
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	UWidgetComponent* HealthBarWidgetComponent;
@@ -102,13 +115,15 @@ protected:
 	UPROPERTY()
 	TSubclassOf<UUserWidget> HealthBarWidgetClass;
 
+	// void OnHealthChanged(const FOnAttributeChangeData& Data);
+
 	// UI
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	bool bIsHovered = false;
 	
 
-	// Material
+	// Materials for Fade effect
 
 	UPROPERTY()
 	TArray<UMaterialInstanceDynamic*> FadeMIDs;

@@ -2,6 +2,9 @@
 
 
 #include "MainCharacter.h"
+
+#include <ThirdParty/ShaderConductor/ShaderConductor/External/DirectXShaderCompiler/include/dxc/DXIL/DxilConstants.h>
+
 #include "Components/SkeletalMeshComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -13,6 +16,9 @@
 #include "EnhancedInputSubsystems.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "DrawDebugHelpers.h"
+#include "Components/SphereComponent.h"
+#include "Autobots/BVAutobotBase.h"
+#include "Weapons/Projectiles/BVProjectileBase.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -97,6 +103,26 @@ AMainCharacter::AMainCharacter()
 		RightClickMoveAction = RightClickMoveActionRef.Object;
 	}
 
+	// Attack Sphere
+
+	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));
+	AttackRangeSphere->SetupAttachment(RootComponent);
+	AttackRangeSphere->InitSphereRadius(AttackRange);
+
+	/*
+	AttackRangeSphere->SetHiddenInGame(false);
+	AttackRangeSphere->bHiddenInGame = false;
+	AttackRangeSphere->SetVisibility(true);
+	AttackRangeSphere->ShapeColor = FColor::Green;
+	AttackRangeSphere->bDrawOnlyIfSelected = false;
+	*/
+	
+	AttackRangeSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	AttackRangeSphere->SetCollisionObjectType(ECC_WorldDynamic);
+	AttackRangeSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	AttackRangeSphere->SetGenerateOverlapEvents(true);
+	
 }
 
 // Called when the game starts or when spawned
@@ -109,6 +135,13 @@ void AMainCharacter::BeginPlay()
 	{
 		Subsystem->AddMappingContext(InputMappingContext, 0);
 	}
+
+	if (AttackRangeSphere)
+	{
+		AttackRangeSphere->SetSphereRadius(AttackRange);
+		AttackRangeSphere->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnAttackRangeBeginOverlap);
+		AttackRangeSphere->OnComponentEndOverlap.AddDynamic(this, &AMainCharacter::OnAttackRangeEndOverlap);
+	}
 	
 }
 
@@ -116,6 +149,8 @@ void AMainCharacter::BeginPlay()
 void AMainCharacter::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	AutoFire(DeltaTime);
 
 }
 
@@ -174,7 +209,7 @@ void AMainCharacter::MoveToLocation(const FInputActionValue& Value)
 	const FVector DestLocation = Hit.ImpactPoint;
 
 	// Debug
-	DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
+	DrawDebugSphere(GetWorld(), DestLocation, 25.0f,  12, FColor::Red, false, 1.0f);
 	
 	UAIBlueprintHelperLibrary::SimpleMoveToLocation(Controller, DestLocation);
 	
@@ -187,5 +222,96 @@ FGenericTeamId AMainCharacter::GetGenericTeamId() const
 		return TeamAgent->GetGenericTeamId();
 	}
 	return IGenericTeamAgentInterface::GetGenericTeamId();
+}
+
+void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+{
+	ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OtherActor);
+	if (!Unit) return;
+
+	if (Unit->GetTeamFlag() == TeamFlag) return;
+	if (Unit->bIsDead == true) return;
+
+	EnemiesInRange.AddUnique(Unit);
+
+	UE_LOG(LogTemp, Warning, TEXT("Unit added [%s]"), *Unit->GetName());
+}
+
+void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
+{
+	ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OtherActor);
+	if (!Unit) return;
+
+	EnemiesInRange.Remove(Unit);
+}
+
+void AMainCharacter::AutoFire(float DeltaSecond)
+{
+
+	TimeSinceLastShot += DeltaSecond;
+	if (TimeSinceLastShot < FireInterval) return;
+
+	ABVAutobotBase* Target = FindNearestEnemyInRange();
+	if (!Target) return;
+
+	FireToTarget(Target);
+	TimeSinceLastShot = 0.f;
+}
+
+void AMainCharacter::FireToTarget(ABVAutobotBase* Target)
+{
+	
+	if (!Target ) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	const FVector FireLocation = GetActorLocation();
+	const FVector TargetLocation = Target->GetActorLocation();
+
+	FVector FireDir = (TargetLocation - FireLocation).GetSafeNormal();
+	if (FireDir.IsNearlyZero()) return;
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.Instigator = this;
+
+	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(ABVProjectileBase::StaticClass(), FireLocation, FireDir.Rotation(), Params);
+	if (Projectile)
+	{
+		Projectile->InitVelocity(FireDir);
+		Projectile->InitBeamEnd(FireLocation, TargetLocation);
+
+	}
+	
+}
+
+class ABVAutobotBase* AMainCharacter::FindNearestEnemyInRange() const
+{
+	const FVector MyLocation = GetActorLocation();
+
+	ABVAutobotBase* Nearest = nullptr;
+	float BestDistSq = FLT_MAX;
+
+	for (const TWeakObjectPtr<ABVAutobotBase>& WeakUnit : EnemiesInRange)
+	{
+		ABVAutobotBase* Unit = WeakUnit.Get();
+		if (!IsValid(Unit)) continue;
+		if (Unit->bIsDead == true) continue;
+		if (Unit->GetTeamFlag() == TeamFlag) continue;
+
+		const float DistSq = FVector::DistSquared(MyLocation, Unit->GetActorLocation());
+		if (DistSq < BestDistSq)
+		{
+			BestDistSq = DistSq;
+			Nearest = Unit;
+		}
+		
+	}
+
+	return Nearest;
+	
 }
 

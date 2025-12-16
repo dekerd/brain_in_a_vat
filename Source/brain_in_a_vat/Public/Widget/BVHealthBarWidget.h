@@ -7,7 +7,7 @@
 #include "BVHealthBarWidget.generated.h"
 
 class UProgressBar;
-class ABVAutobotBase;
+class UBVHealthComponent;;
 
 /**
  * 
@@ -20,7 +20,7 @@ class BRAIN_IN_A_VAT_API UBVHealthBarWidget : public UUserWidget
 public:
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
-	void InitWithOwner(ABVAutobotBase* InOwner);
+	void InitWithHealthComponent(UBVHealthComponent* InHealthComponent);
 
 protected:
 
@@ -31,5 +31,5 @@ protected:
 	void HandleHealthChanged(float NewRatio);
 	
 	UPROPERTY()
-	ABVAutobotBase* OwnerAutobot;
+	UBVHealthComponent* HealthComponent;
 };

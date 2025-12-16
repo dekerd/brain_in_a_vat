@@ -12,11 +12,6 @@
 ABVBuildingGateway::ABVBuildingGateway()
 {
 	PrimaryActorTick.bCanEverTick = true;
-
-	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Capsule"));
-	RootComponent = CapsuleComponent;
-	CapsuleComponent->InitCapsuleSize(20.f, 30.f);
-	CapsuleComponent->SetCollisionProfileName(TEXT("BlockAll"));
 	
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	StaticMeshComponent->SetupAttachment(RootComponent);
