@@ -25,5 +25,8 @@ ABVBuildingGateway::ABVBuildingGateway()
 
 	SpawnUnitClass = ABVAutobotBlue::StaticClass();
 	RespawnInterval = 10.f;
+
+	TeamFlag = 1;
+	StatRowName = TEXT("Gateway");
 	
 }

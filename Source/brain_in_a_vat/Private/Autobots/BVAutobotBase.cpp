@@ -48,9 +48,15 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 
-	// Crowd
 	GetCharacterMovement()->bUseRVOAvoidance = true;
 	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
+
+	// Unit Stats
+	static ConstructorHelpers::FObjectFinder<UDataTable> DT_UnitStats(TEXT("/Script/Engine.DataTable'/Game/Data/UnitStats.UnitStats'"));
+	if (DT_UnitStats.Succeeded())
+	{
+		UnitStatTable = DT_UnitStats.Object;
+	}
 
 	// HealthComponent
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
@@ -75,6 +81,12 @@ ABVAutobotBase::ABVAutobotBase()
 	ASC->SetReplicationMode(EGameplayEffectReplicationMode::Mixed);
 	
 	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
+
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> InitStatGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_InitStat.GE_InitStat_C'"));
+	if (InitStatGEClass.Succeeded())
+	{
+		InitStatsEffect = InitStatGEClass.Class;
+	}
 
 	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_MeleeDamage.GE_MeleeDamage_C'"));
 	if (DamageGEClass.Succeeded())
@@ -112,14 +124,19 @@ void ABVAutobotBase::BeginPlay()
 		AIController->SetGenericTeamId(FGenericTeamId(TeamFlag));
 	}
 
-	// [GAS] Setting ASC
+	// [GAS] Initialize ASC
 	if (ASC && CombatAttributes)
 	{
 		ASC->InitAbilityActorInfo(this, this);
+
+		// Initialize Health Component
 		if (HealthComponent)
 		{
 			HealthComponent->InitFromGAS(ASC, CombatAttributes);
 		}
+
+		// Initialize GAS stats from DataTable
+		ApplyInitStatFromDataTable();
 		
 	}
 
@@ -213,6 +230,45 @@ void ABVAutobotBase::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupt
 UAbilitySystemComponent* ABVAutobotBase::GetAbilitySystemComponent() const
 {
 	return ASC;
+}
+
+FGenericTeamId ABVAutobotBase::GetTeamId_Implementation() const
+{
+	return GetGenericTeamId();
+}
+
+bool ABVAutobotBase::IsDestroyed_Implementation() const
+{
+	return bIsDead;
+}
+
+const FUnitStats* ABVAutobotBase::GetUnitStats() const
+{
+	if (!UnitStatTable || UnitStatRowName.IsNone()) return nullptr;
+
+	return UnitStatTable->FindRow<FUnitStats>(UnitStatRowName, TEXT("UnitStatLookup"));
+}
+
+void ABVAutobotBase::ApplyInitStatFromDataTable()
+{
+
+	if (!ASC) return;
+	if (!InitStatsEffect) return;
+	
+	const FUnitStats* UnitStats = GetUnitStats();
+	if (!UnitStats) return;
+
+	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
+	GEContext.AddSourceObject(this);
+	
+	FGameplayEffectSpecHandle GESpec = ASC->MakeOutgoingSpec(InitStatsEffect, 1.f, GEContext);
+	if (!GESpec.IsValid()) return;
+
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), UnitStats->MaxHealth);
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), UnitStats->Damage);
+
+	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());
+	
 }
 
 void ABVAutobotBase::Attack()

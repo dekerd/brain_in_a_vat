@@ -19,6 +19,7 @@
 #include "Components/SphereComponent.h"
 #include "Autobots/BVAutobotBase.h"
 #include "Weapons/Projectiles/BVProjectileBase.h"
+#include "Collision/BVCollision.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -108,19 +109,12 @@ AMainCharacter::AMainCharacter()
 	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));
 	AttackRangeSphere->SetupAttachment(RootComponent);
 	AttackRangeSphere->InitSphereRadius(AttackRange);
-
-	/*
-	AttackRangeSphere->SetHiddenInGame(false);
-	AttackRangeSphere->bHiddenInGame = false;
-	AttackRangeSphere->SetVisibility(true);
-	AttackRangeSphere->ShapeColor = FColor::Green;
-	AttackRangeSphere->bDrawOnlyIfSelected = false;
-	*/
 	
 	AttackRangeSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
 	AttackRangeSphere->SetCollisionObjectType(ECC_WorldDynamic);
 	AttackRangeSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
 	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
 	AttackRangeSphere->SetGenerateOverlapEvents(true);
 	
 }
@@ -227,15 +221,19 @@ FGenericTeamId AMainCharacter::GetGenericTeamId() const
 void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OtherActor);
-	if (!Unit) return;
 
-	if (Unit->GetTeamFlag() == TeamFlag) return;
-	if (Unit->bIsDead == true) return;
+	UE_LOG(LogTemp, Warning, TEXT("Target actor adding start : [%s]"), *OtherActor->GetName());
+	if (!OtherActor) return;
+	if (!OtherActor->Implements<UBVDamageableInterface>()) return;
 
-	EnemiesInRange.AddUnique(Unit);
+	const uint8 OtherActorTeamId = IBVDamageableInterface::Execute_GetTeamId(OtherActor);
+	if (OtherActorTeamId == TeamFlag) return;
+	
+	if (IBVDamageableInterface::Execute_IsDestroyed(OtherActor) == true) return;
 
-	UE_LOG(LogTemp, Warning, TEXT("Unit added [%s]"), *Unit->GetName());
+	EnemiesInRange.AddUnique(OtherActor);
+
+	UE_LOG(LogTemp, Warning, TEXT("Target actor added : [%s]"), *OtherActor->GetName());
 }
 
 void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -253,14 +251,14 @@ void AMainCharacter::AutoFire(float DeltaSecond)
 	TimeSinceLastShot += DeltaSecond;
 	if (TimeSinceLastShot < FireInterval) return;
 
-	ABVAutobotBase* Target = FindNearestEnemyInRange();
+	AActor* Target = FindNearestEnemyInRange();
 	if (!Target) return;
 
 	FireToTarget(Target);
 	TimeSinceLastShot = 0.f;
 }
 
-void AMainCharacter::FireToTarget(ABVAutobotBase* Target)
+void AMainCharacter::FireToTarget(AActor* Target)
 {
 	
 	if (!Target ) return;
@@ -288,25 +286,25 @@ void AMainCharacter::FireToTarget(ABVAutobotBase* Target)
 	
 }
 
-class ABVAutobotBase* AMainCharacter::FindNearestEnemyInRange() const
+class AActor* AMainCharacter::FindNearestEnemyInRange() const
 {
 	const FVector MyLocation = GetActorLocation();
 
-	ABVAutobotBase* Nearest = nullptr;
+	AActor* Nearest = nullptr;
 	float BestDistSq = FLT_MAX;
 
-	for (const TWeakObjectPtr<ABVAutobotBase>& WeakUnit : EnemiesInRange)
+	for (const TWeakObjectPtr<AActor>& WeakActor : EnemiesInRange)
 	{
-		ABVAutobotBase* Unit = WeakUnit.Get();
-		if (!IsValid(Unit)) continue;
-		if (Unit->bIsDead == true) continue;
-		if (Unit->GetTeamFlag() == TeamFlag) continue;
+		AActor* TargetActor = WeakActor.Get();
+		if (!IsValid(TargetActor)) continue;
+		if (IBVDamageableInterface::Execute_GetTeamId(TargetActor) == TeamFlag) continue;
+		if (IBVDamageableInterface::Execute_IsDestroyed(TargetActor)) continue;
 
-		const float DistSq = FVector::DistSquared(MyLocation, Unit->GetActorLocation());
+		const float DistSq = FVector::DistSquared(MyLocation, TargetActor->GetActorLocation());
 		if (DistSq < BestDistSq)
 		{
 			BestDistSq = DistSq;
-			Nearest = Unit;
+			Nearest = TargetActor;
 		}
 		
 	}

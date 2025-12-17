@@ -7,10 +7,12 @@
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "GenericTeamAgentInterface.h"
+#include "Interface/BVDamageableInterface.h"
+#include "Data/UnitStats.h"
 #include "BVBuildingBase.generated.h"
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVBuildingBase : public AActor, public IGenericTeamAgentInterface, public IAbilitySystemInterface
+class BRAIN_IN_A_VAT_API ABVBuildingBase : public AActor, public IGenericTeamAgentInterface, public IAbilitySystemInterface, public IBVDamageableInterface
 {
 	GENERATED_BODY()
 
@@ -34,6 +36,11 @@ public:
 	// Interface
 	uint32 GetTeamFlag() const { return TeamFlag; }
 
+// Damageable Interface
+public:
+	virtual FGenericTeamId GetTeamId_Implementation() const override;
+	virtual bool IsDestroyed_Implementation() const override;
+
 protected:
 
 	virtual void BeginPlay() override;
@@ -42,18 +49,35 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UCapsuleComponent> CapsuleComponent;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Mesh")
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components")
 	TObjectPtr<class UStaticMeshComponent> StaticMeshComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<class UBVHealthComponent> HealthComponent;
 
-	// Properties
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class UAIPerceptionStimuliSourceComponent> StimuliSourceComponent;
+
+// Stats
+public:
 	UPROPERTY()
-	uint32 TeamFlag;
+	uint8 TeamFlag;
 
-	// Gameplay Ability System (GAS)
+	const FUnitStats* GetStats() const;
+	void ApplyInitStatFromDataTable();
 
+protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	UDataTable* StatTable;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	FName StatRowName;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
+	TSubclassOf<class UGameplayEffect> InitStatsEffect;
+	
+// Gameplay Ability System (GAS)
+public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
 	TObjectPtr<UAbilitySystemComponent> ASC;
 

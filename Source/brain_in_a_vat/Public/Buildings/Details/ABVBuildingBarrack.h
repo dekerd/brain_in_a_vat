@@ -14,5 +14,5 @@ class BRAIN_IN_A_VAT_API AABVBuildingBarrack : public ABVBuildingBase
 public:
 	// Sets default values for this actor's properties
 	AABVBuildingBarrack();
-	
+
 };

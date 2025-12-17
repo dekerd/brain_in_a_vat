@@ -37,6 +37,7 @@ ABVAutobotRed::ABVAutobotRed()
 
 	// Character Stat
 	AttackSpeed = 0.8;
+	UnitStatRowName = TEXT("AutobotRed");
 	
 }
 

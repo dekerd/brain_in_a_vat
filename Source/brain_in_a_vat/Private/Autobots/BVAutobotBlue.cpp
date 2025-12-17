@@ -29,13 +29,15 @@ ABVAutobotBlue::ABVAutobotBlue()
 	{
 		DeathMontage = DeathMontageRef.Object;
 	}
-
 	
 	// Team Info
 	TeamFlag = 1;
 
 	// Character Stat
 	AttackSpeed = 1.3;
+	UnitStatRowName = TEXT("AutobotBlue");
+
+	// Initialize Stats
 
 }
 

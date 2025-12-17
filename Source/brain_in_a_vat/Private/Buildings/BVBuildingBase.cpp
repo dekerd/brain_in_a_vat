@@ -6,19 +6,61 @@
 #include "Components/WidgetComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/BVHealthComponent.h"
+#include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
 #include "DrawDebugHelpers.h"
 #include "Widget/BVHealthBarWidget.h"
 #include "GAS/CombatAttributeSet.h"
+#include "Perception/AISense_Sight.h"
+#include "Collision/BVCollision.h"
+#include "Data/UnitStats.h"
 
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
 {
+
+	// <--------------- Components ----------------> //
 	// Root Component
 	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Capsule"));
 	RootComponent = CapsuleComponent;
 	CapsuleComponent->InitCapsuleSize(20.f, 30.f);
-	CapsuleComponent->SetCollisionProfileName(TEXT("BlockAll"));
+	CapsuleComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	CapsuleComponent->SetGenerateOverlapEvents(true);
+	CapsuleComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	CapsuleComponent->SetCollisionObjectType(ECC_Building);
+	CapsuleComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	CapsuleComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	
+	// [GAS] ASC & Attributes
+
+	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
+	ASC->SetIsReplicated(true);
+
+	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
+
+	// Stimuli Source Component
+	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSource"));
+	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
+	StimuliSourceComponent->RegisterWithPerceptionSystem();
+
+	// Health Component
+	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
+
+	// <--------------- Assets ----------------> //
+	// Unit Stats
+	static ConstructorHelpers::FObjectFinder<UDataTable> DT_UnitStats(TEXT("/Script/Engine.DataTable'/Game/Data/UnitStats.UnitStats'"));
+	if (DT_UnitStats.Succeeded())
+	{
+		StatTable = DT_UnitStats.Object;
+	}
+
+	static ConstructorHelpers::FClassFinder<UGameplayEffect> InitStatGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_InitStat.GE_InitStat_C'"));
+	if (InitStatGEClass.Succeeded())
+	{
+		InitStatsEffect = InitStatGEClass.Class;
+	}
+
+	// <--------------- Widgets ----------------> //
 	
 	// HealthBar Widget
 	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidget"));
@@ -73,12 +115,22 @@ void ABVBuildingBase::DestroyBuilding()
 
 FGenericTeamId ABVBuildingBase::GetGenericTeamId() const
 {
-	return IGenericTeamAgentInterface::GetGenericTeamId();
+	return FGenericTeamId(TeamFlag);
 }
 
 UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
 {
 	return ASC;	
+}
+
+FGenericTeamId ABVBuildingBase::GetTeamId_Implementation() const
+{
+	return GetGenericTeamId();
+}
+
+bool ABVBuildingBase::IsDestroyed_Implementation() const
+{
+	return bIsDestroyed;
 }
 
 // Called when the game starts or when spawned
@@ -93,10 +145,35 @@ void ABVBuildingBase::BeginPlay()
 	RespawnWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 50.f));
 	RespawnWidgetComponent->SetDrawSize(FVector2D(200.f, 10.f));
 	
-	HealthBarWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 62.f));
+	HealthBarWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 70.f));
 	HealthBarWidgetComponent->SetDrawSize(FVector2D(200.f, 10.f));
 
+	// [GAS] Initialize ASC
 
+	if (ASC && CombatAttributes)
+	{
+		ASC->InitAbilityActorInfo(this, this);
+
+		// Initialize Health Component
+		if (HealthComponent)
+		{
+			HealthComponent->InitFromGAS(ASC, CombatAttributes);
+		}
+	}
+
+	// Health Bar Widget
+	if (HealthBarWidgetComponent)
+	{
+		if (UUserWidget* Widget = HealthBarWidgetComponent->GetUserWidgetObject())
+		{
+			if (UBVHealthBarWidget* HealthBar = Cast<UBVHealthBarWidget>(Widget))
+			{
+				HealthBar->InitWithHealthComponent(HealthComponent);
+			}
+		}
+	}
+	
+	// Respawn Cooltime Widget
 	if (UUserWidget* UserWidget = RespawnWidgetComponent->GetUserWidgetObject())
 	{
 		RespawnWidget = Cast<UBVSpawnCooltimeBar>(UserWidget);
@@ -116,6 +193,18 @@ void ABVBuildingBase::BeginPlay()
 			);
 	}
 	
+}
+
+const FUnitStats* ABVBuildingBase::GetStats() const
+{
+	if (!StatTable || !StatRowName.IsNone()) return nullptr;
+	return StatTable->FindRow<FUnitStats>(StatRowName, TEXT("StatLookup"));
+}
+
+void ABVBuildingBase::ApplyInitStatFromDataTable()
+{
+
+	if (!ASC) return;
 }
 
 void ABVBuildingBase::SpawnUnit()

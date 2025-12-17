@@ -26,4 +26,6 @@ AABVBuildingBarrack::AABVBuildingBarrack()
 	SpawnUnitClass = ABVAutobotRed::StaticClass();
 	RespawnInterval = 10.f;
 
+	TeamFlag = 2;
+	StatRowName = TEXT("Barrack");
 }

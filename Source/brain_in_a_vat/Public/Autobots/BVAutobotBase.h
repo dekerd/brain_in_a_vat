@@ -8,27 +8,31 @@
 #include "AbilitySystemComponent.h"
 #include "GAS/CombatAttributeSet.h"
 #include "GameFramework/Character.h"
+#include "Interface/BVDamageableInterface.h"
+#include "Data/UnitStats.h"
 #include "BVAutobotBase.generated.h"
+
 
 class UWidgetComponent;
 class UBVHealthComponent;
+class UDataTable;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttackFinished, AAIController*, AIController);
 // DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChangedUI, float, NewHealthRatio);
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVAutobotBase : public ACharacter, public IGenericTeamAgentInterface, public IAbilitySystemInterface
+class BRAIN_IN_A_VAT_API ABVAutobotBase : public ACharacter, public IGenericTeamAgentInterface, public IAbilitySystemInterface, public IBVDamageableInterface
 {
 	GENERATED_BODY()
 
 public:
 	ABVAutobotBase();
 
-////// Team Info
+// Team Info
+public:
 	virtual FGenericTeamId GetGenericTeamId() const override;
 
-////// Gameplay Ability System (GAS)
-	
+// Gameplay Ability System (GAS)
 public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 
@@ -45,14 +49,36 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> DamageEffect;
 
-////// HealthBar Components
-
+// HealthBar Components
 public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<UBVHealthComponent> HealthComponent;
-	
-////// Basic Functionalities
 
+// Damageable Interface Implementation
+public:
+	virtual FGenericTeamId GetTeamId_Implementation() const override;
+	virtual bool IsDestroyed_Implementation() const override;
+	
+// Basic Functionalities
+
+
+// Stats
+public:
+	const FUnitStats* GetUnitStats() const;
+
+	void ApplyInitStatFromDataTable();
+
+protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	UDataTable* UnitStatTable;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	FName UnitStatRowName;
+	
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
+	TSubclassOf<class UGameplayEffect> InitStatsEffect;
+
+	
 public:
 	void Attack();
 	void Dead();

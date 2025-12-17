@@ -74,7 +74,7 @@ protected:
 	float TimeSinceLastShot = 0.f;
 
 	UPROPERTY()
-	TArray<TWeakObjectPtr<class ABVAutobotBase>> EnemiesInRange;
+	TArray<TWeakObjectPtr<class AActor>> EnemiesInRange;
 
 	UFUNCTION()
 	void OnAttackRangeBeginOverlap(
@@ -94,8 +94,8 @@ protected:
 
 	void AutoFire(float DeltaSecond);
 
-	class ABVAutobotBase* FindNearestEnemyInRange() const;
+	class AActor* FindNearestEnemyInRange() const;
 
-	void FireToTarget(ABVAutobotBase* Target);
+	void FireToTarget(AActor* Target);
 
 };
