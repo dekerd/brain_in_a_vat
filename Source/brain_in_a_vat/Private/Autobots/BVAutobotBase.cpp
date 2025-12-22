@@ -265,6 +265,7 @@ void ABVAutobotBase::ApplyInitStatFromDataTable()
 	if (!GESpec.IsValid()) return;
 
 	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), UnitStats->MaxHealth);
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), UnitStats->MaxHealth);
 	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), UnitStats->Damage);
 
 	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());

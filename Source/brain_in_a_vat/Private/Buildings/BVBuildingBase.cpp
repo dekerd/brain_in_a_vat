@@ -94,6 +94,9 @@ void ABVBuildingBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	// If destroyed, do nothing
+	if (bIsDestroyed) return;
+
 	if (RespawnInterval <= 0.f) return;
 
 	ElapsedTime += DeltaTime;
@@ -109,8 +112,28 @@ void ABVBuildingBase::Tick(float DeltaTime)
 
 void ABVBuildingBase::DestroyBuilding()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[%s] has been destroyed!"), *GetName());
 	bIsDestroyed = true;
+
+	// Disable collisions
+	if (CapsuleComponent)
+		CapsuleComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (StaticMeshComponent)
+		StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Stop Respawn Timer
+	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
+	ElapsedTime = 0.0f;
+	
+
+	// Hide Widget
+	if (RespawnWidgetComponent)
+		RespawnWidgetComponent->SetVisibility(false);
+	if (HealthBarWidgetComponent)
+		HealthBarWidgetComponent->SetVisibility(false);
+
+	// Destroy
+	SetLifeSpan(1.0f);
+	
 }
 
 FGenericTeamId ABVBuildingBase::GetGenericTeamId() const
@@ -159,6 +182,8 @@ void ABVBuildingBase::BeginPlay()
 		{
 			HealthComponent->InitFromGAS(ASC, CombatAttributes);
 		}
+
+		ApplyInitStatFromDataTable();
 	}
 
 	// Health Bar Widget
@@ -197,7 +222,7 @@ void ABVBuildingBase::BeginPlay()
 
 const FUnitStats* ABVBuildingBase::GetStats() const
 {
-	if (!StatTable || !StatRowName.IsNone()) return nullptr;
+	if (!StatTable || StatRowName.IsNone()) return nullptr;
 	return StatTable->FindRow<FUnitStats>(StatRowName, TEXT("StatLookup"));
 }
 
@@ -205,6 +230,22 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 {
 
 	if (!ASC) return;
+	if (!InitStatsEffect) return;
+
+	const FUnitStats* Stats = GetStats();
+	if (!Stats) return;
+
+	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
+	GEContext.AddSourceObject(this);
+
+	FGameplayEffectSpecHandle GESpec = ASC->MakeOutgoingSpec(InitStatsEffect, 1.f, GEContext);
+	if (!GESpec.IsValid()) return;
+
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), Stats->MaxHealth);
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), Stats->MaxHealth);
+
+	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());
+	
 }
 
 void ABVBuildingBase::SpawnUnit()

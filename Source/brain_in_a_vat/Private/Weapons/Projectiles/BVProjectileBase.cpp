@@ -6,7 +6,7 @@
 #include "NiagaraSystem.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
-
+#include "Collision/BVCollision.h"
 #include "Autobots/BVAutobotBase.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
@@ -29,6 +29,7 @@ ABVProjectileBase::ABVProjectileBase()
 	CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
 	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
+	CollisionComponent->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap); 
 	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
 	CollisionComponent->SetNotifyRigidBodyCollision(true); // For OnHit
 
@@ -83,47 +84,34 @@ void ABVProjectileBase::InitVelocity(const FVector& FireDir)
 void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-
-	UE_LOG(LogTemp, Warning, TEXT("OnCollisionBeginOverlap"))
-	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
-
-	ABVAutobotBase* HitUnit = Cast<ABVAutobotBase>(OtherActor);
-	if (!HitUnit)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Laser : No hit unit"))
-		return;
-	}
 	
-	if (HitUnit->bIsDead) return;
+	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
+	if (!OtherActor->Implements<UBVDamageableInterface>()) return;
+	
+	if (IBVDamageableInterface::Execute_IsDestroyed(OtherActor)) return;
 
 	if (const AMainCharacter* MainPlayer = Cast<AMainCharacter>(GetOwner()))
 	{
-		if (HitUnit->GetTeamFlag() == MainPlayer->GetTeamFlag()) return;
+		if (IBVDamageableInterface::Execute_GetTeamId(OtherActor) == MainPlayer->GetTeamFlag())
+		{
+			return;
+		}
 	}
 
-	UE_LOG(LogTemp, Warning, TEXT("Laser : Checkpoint 2"))
+	if (!DamageEffect) return;
 
-	if (!DamageEffect)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("Projectile has no DamageEffect set"));
-		return;
-	}
-
-	IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(HitUnit);
+	IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(OtherActor);
 	if (!TargetASI)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Projectile hit actor has no AbilitySystemInterface"));
 		return;
 	}
 
 	UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent();
 	if (!TargetASC)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("Projectile hit actor has no ASC"));
 		return;
 	}
-
-	UE_LOG(LogTemp, Warning, TEXT("Laser : GE is about to work"))
+	
 
 	FGameplayEffectContextHandle ContextHandle = TargetASC->MakeEffectContext();
 	ContextHandle.AddSourceObject(this);
