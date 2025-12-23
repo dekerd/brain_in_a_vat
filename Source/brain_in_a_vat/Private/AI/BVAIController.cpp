@@ -115,6 +115,15 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 
 	TArray<AActor*> PerceivedActors;
 	AIPerception->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), PerceivedActors);
+
+	for (AActor* Actor : PerceivedActors)
+	{
+		if (Actor)
+		{
+			FString DebugMsg = FString::Printf(TEXT("Perceived: %s -> %s"), *ControllingPawn->GetName(), *Actor->GetName());
+			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, DebugMsg);
+		}
+	}
 	
 	const FGenericTeamId MyTeamId = GetGenericTeamId();
 

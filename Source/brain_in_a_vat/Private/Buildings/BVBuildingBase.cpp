@@ -30,6 +30,7 @@ ABVBuildingBase::ABVBuildingBase()
 	CapsuleComponent->SetCollisionObjectType(ECC_Building);
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	CapsuleComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	CapsuleComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	
 	// [GAS] ASC & Attributes
 
@@ -40,8 +41,6 @@ ABVBuildingBase::ABVBuildingBase()
 
 	// Stimuli Source Component
 	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSource"));
-	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
-	StimuliSourceComponent->RegisterWithPerceptionSystem();
 
 	// Health Component
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
@@ -123,7 +122,6 @@ void ABVBuildingBase::DestroyBuilding()
 	// Stop Respawn Timer
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
 	ElapsedTime = 0.0f;
-	
 
 	// Hide Widget
 	if (RespawnWidgetComponent)
@@ -185,6 +183,10 @@ void ABVBuildingBase::BeginPlay()
 
 		ApplyInitStatFromDataTable();
 	}
+
+	// Add StimuliSource
+	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
+	StimuliSourceComponent->RegisterWithPerceptionSystem();
 
 	// Health Bar Widget
 	if (HealthBarWidgetComponent)
