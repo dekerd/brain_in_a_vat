@@ -36,6 +36,22 @@ public:
 	// Interface
 	uint32 GetTeamFlag() const { return TeamFlag; }
 
+// Capsule Offset
+
+protected:
+
+	virtual void OnConstruction(const FTransform& Transform) override;
+	
+	UPROPERTY(EditAnywhere, Category = "Collision")
+	float CapsuleRadius = 200.f;
+	
+	UPROPERTY(EditAnywhere, Category = "Collision")
+	float CapsuleHalfHeight = 200.f;
+
+	UPROPERTY(EditAnywhere, Category = "Collision")
+	FVector CapsuleOffset = FVector::ZeroVector;
+	
+
 // Damageable Interface
 public:
 	virtual FGenericTeamId GetTeamId_Implementation() const override;
@@ -47,7 +63,7 @@ protected:
 	
 	// Building Components
 	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<class UCapsuleComponent> CapsuleComponent;
+	TObjectPtr<class UBoxComponent> BoxComponent;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components")
 	TObjectPtr<class UStaticMeshComponent> StaticMeshComponent;

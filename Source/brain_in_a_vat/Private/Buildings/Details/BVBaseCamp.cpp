@@ -2,6 +2,7 @@
 
 
 #include "Buildings/Details/BVBaseCamp.h"
+#include "Components/BoxComponent.h"
 
 
 // Sets default values
@@ -29,4 +30,17 @@ void ABVBaseCamp::BeginPlay()
 {
 	Super::BeginPlay();
 	
+}
+
+void ABVBaseCamp::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	/*
+	if (StaticMeshComponent && BoxComponent)
+	{
+		FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
+	}
+	*/
 }

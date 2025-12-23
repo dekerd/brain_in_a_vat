@@ -4,7 +4,7 @@
 #include "Buildings/Details/BVBuildingGateway.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/CapsuleComponent.h"
+#include "Components/BoxComponent.h"
 #include "Autobots/BVAutobotBlue.h"
 
 
@@ -28,5 +28,17 @@ ABVBuildingGateway::ABVBuildingGateway()
 
 	TeamFlag = 1;
 	StatRowName = TEXT("Gateway");
+	
+}
+
+void ABVBuildingGateway::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	if (StaticMeshComponent && BoxComponent)
+	{
+		FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
+	}
 	
 }

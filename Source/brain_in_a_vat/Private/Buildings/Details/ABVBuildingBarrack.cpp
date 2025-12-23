@@ -4,7 +4,7 @@
 #include "Buildings/Details/ABVBuildingBarrack.h"
 #include "UObject/ConstructorHelpers.h"
 #include "Components/StaticMeshComponent.h"
-#include "Components/CapsuleComponent.h"
+#include "Components/BoxComponent.h"
 #include "Autobots/BVAutobotRed.h"
 
 // Sets default values
@@ -29,3 +29,9 @@ AABVBuildingBarrack::AABVBuildingBarrack()
 	TeamFlag = 2;
 	StatRowName = TEXT("Barrack");
 }
+
+void AABVBuildingBarrack::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+}
+

@@ -4,7 +4,7 @@
 #include "Buildings/BVBuildingBase.h"
 #include "Autobots/BVAutobotBase.h"
 #include "Components/WidgetComponent.h"
-#include "Components/CapsuleComponent.h"
+#include "Components/BoxComponent.h"
 #include "Components/BVHealthComponent.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
@@ -21,16 +21,16 @@ ABVBuildingBase::ABVBuildingBase()
 
 	// <--------------- Components ----------------> //
 	// Root Component
-	CapsuleComponent = CreateDefaultSubobject<UCapsuleComponent>(TEXT("Capsule"));
-	RootComponent = CapsuleComponent;
-	CapsuleComponent->InitCapsuleSize(20.f, 30.f);
-	CapsuleComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	CapsuleComponent->SetGenerateOverlapEvents(true);
-	CapsuleComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-	CapsuleComponent->SetCollisionObjectType(ECC_Building);
-	CapsuleComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
-	CapsuleComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-	CapsuleComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	BoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
+	RootComponent = BoxComponent;
+	BoxComponent->InitBoxExtent(FVector(30.f, 30.f, 30.f));
+	BoxComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	BoxComponent->SetGenerateOverlapEvents(true);
+	BoxComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	BoxComponent->SetCollisionObjectType(ECC_Building);
+	BoxComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	BoxComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	BoxComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	
 	// [GAS] ASC & Attributes
 
@@ -114,8 +114,8 @@ void ABVBuildingBase::DestroyBuilding()
 	bIsDestroyed = true;
 
 	// Disable collisions
-	if (CapsuleComponent)
-		CapsuleComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	if (BoxComponent)
+		BoxComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	if (StaticMeshComponent)
 		StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
@@ -142,6 +142,11 @@ FGenericTeamId ABVBuildingBase::GetGenericTeamId() const
 UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
 {
 	return ASC;	
+}
+
+void ABVBuildingBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
 }
 
 FGenericTeamId ABVBuildingBase::GetTeamId_Implementation() const

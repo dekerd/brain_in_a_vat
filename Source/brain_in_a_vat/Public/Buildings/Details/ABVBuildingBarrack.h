@@ -15,4 +15,6 @@ public:
 	// Sets default values for this actor's properties
 	AABVBuildingBarrack();
 
+	virtual void OnConstruction(const FTransform& Transform) override;
+
 };

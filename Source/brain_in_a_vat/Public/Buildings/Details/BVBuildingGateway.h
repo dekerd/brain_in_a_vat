@@ -14,5 +14,8 @@ class BRAIN_IN_A_VAT_API ABVBuildingGateway : public ABVBuildingBase
 public:
 	// Sets default values for this actor's properties
 	ABVBuildingGateway();
+
+protected:
+	virtual void OnConstruction(const FTransform& Transform) override;
 	
 };
