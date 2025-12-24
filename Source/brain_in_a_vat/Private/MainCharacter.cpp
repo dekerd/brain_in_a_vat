@@ -11,10 +11,6 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "UObject/ConstructorHelpers.h"
-#include "InputMappingContext.h"
-#include "EnhancedInputComponent.h"
-#include "EnhancedInputSubsystems.h"
-#include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "DrawDebugHelpers.h"
 #include "Components/SphereComponent.h"
 #include "Autobots/BVAutobotBase.h"
@@ -78,32 +74,6 @@ AMainCharacter::AMainCharacter()
 	Camera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	Camera->bUsePawnControlRotation = false;
 
-	// Input
-
-	static ConstructorHelpers::FObjectFinder<UInputMappingContext> InputMappingContextRef(TEXT("/Script/EnhancedInput.InputMappingContext'/Game/Inputs/IMC_Player.IMC_Player'"));
-	if (InputMappingContextRef.Succeeded())
-	{
-		InputMappingContext = InputMappingContextRef.Object;
-	}
-
-	static ConstructorHelpers::FObjectFinder<UInputAction> InputActionMoveRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_Move.IA_Move'"));
-	if (InputActionMoveRef.Succeeded())
-	{
-		MoveAction = InputActionMoveRef.Object;
-	}
-
-	static ConstructorHelpers::FObjectFinder<UInputAction> InputActionJumpRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_Jump.IA_Jump'"));
-	if (InputActionJumpRef.Succeeded())
-	{
-		JumpAction = InputActionJumpRef.Object;
-	}
-
-	static ConstructorHelpers::FObjectFinder<UInputAction> RightClickMoveActionRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_RightClickMove.IA_RightClickMove'"));
-	if (RightClickMoveActionRef.Succeeded())
-	{
-		RightClickMoveAction = RightClickMoveActionRef.Object;
-	}
-
 	// Attack Sphere
 
 	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));
@@ -124,12 +94,6 @@ void AMainCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	TObjectPtr<APlayerController> PlayerController = CastChecked<APlayerController>(GetController());
-	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(PlayerController->GetLocalPlayer()))
-	{
-		Subsystem->AddMappingContext(InputMappingContext, 0);
-	}
-
 	if (AttackRangeSphere)
 	{
 		AttackRangeSphere->SetSphereRadius(AttackRange);
@@ -146,67 +110,6 @@ void AMainCharacter::Tick(float DeltaTime)
 
 	AutoFire(DeltaTime);
 
-}
-
-void AMainCharacter::SetupPlayerInputComponent(UInputComponent* PlayerInputComponent)
-{
-	Super::SetupPlayerInputComponent(PlayerInputComponent);
-
-	TObjectPtr<UEnhancedInputComponent> EnhancedInputComponent = CastChecked<UEnhancedInputComponent>(PlayerInputComponent);
-
-	EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Triggered, this, &AMainCharacter::Move);
-	EnhancedInputComponent->BindAction(JumpAction, ETriggerEvent::Triggered, this, &AMainCharacter::Jump);
-	EnhancedInputComponent->BindAction(RightClickMoveAction, ETriggerEvent::Started, this, &AMainCharacter::MoveToLocation);
-}
-
-void AMainCharacter::Move(const FInputActionValue& Value)
-{
-	// Quarter View
-	FVector2D MovementVector = Value.Get<FVector2D>();
-	float Speed = MovementVector.Length();
-	MovementVector.Normalize();
-
-	FVector MoveDirection = FVector(MovementVector.X, MovementVector.Y, 0);
-	
-	AddMovementInput(MoveDirection, Speed);
-	
-	/* Shoulder View
-	FVector2D MovementVector = Value.Get<FVector2D>();
-
-	const FRotator Rotation = Controller->GetControlRotation();
-	const FRotator YawRotation(0, Rotation.Yaw, 0);
-
-	const FVector ForwardDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::Y);
-	const FVector RightDirection = FRotationMatrix(YawRotation).GetUnitAxis(EAxis::X);
-
-	AddMovementInput(ForwardDirection, MovementVector.Y);
-	AddMovementInput(RightDirection, MovementVector.X);
-	*/
-}
-
-void AMainCharacter::Look(const FInputActionValue& Value)
-{
-	
-}
-
-void AMainCharacter::MoveToLocation(const FInputActionValue& Value)
-{
-	// Right Click Move
-
-	APlayerController* PlayerController = Cast<APlayerController>(GetController());
-	if (!PlayerController) return;
-	
-	FHitResult Hit;
-	bool bHit = PlayerController->GetHitResultUnderCursor(ECC_Visibility, false, Hit);
-	if (!bHit) return;
-
-	const FVector DestLocation = Hit.ImpactPoint;
-
-	// Debug
-	DrawDebugSphere(GetWorld(), DestLocation, 25.0f,  12, FColor::Red, false, 1.0f);
-	
-	UAIBlueprintHelperLibrary::SimpleMoveToLocation(Controller, DestLocation);
-	
 }
 
 FGenericTeamId AMainCharacter::GetGenericTeamId() const

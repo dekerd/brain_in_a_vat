@@ -100,7 +100,7 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
 
-	// Unit Spawning
+// Unit Spawning
 	UPROPERTY()
 	TSubclassOf<class ABVAutobotBase> SpawnUnitClass;
 
@@ -111,7 +111,7 @@ public:
 	UFUNCTION()
 	void SpawnUnit();
 	
-	// Respawn Cooltime Widget
+// Respawn Cooltime Widget
 	
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UWidgetComponent> RespawnWidgetComponent;
@@ -124,12 +124,21 @@ public:
 
 	FTimerHandle SpawnTimerHandle;
 
-	// HealthBar Widget
+// HealthBar Widget
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	UWidgetComponent* HealthBarWidgetComponent;
 
 	UPROPERTY()
 	TSubclassOf<UUserWidget> HealthBarWidgetClass;
+
+// Mouse-hovering effect
+public:
+	UFUNCTION()
+	void SetHovered_Implementation(bool bInHovered) override;
+	
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	bool bIsHovered = false;
 	
 };

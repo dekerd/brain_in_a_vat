@@ -186,27 +186,6 @@ void ABVAutobotBase::Tick(float DeltaTime)
 	}
 }
 
-void ABVAutobotBase::SetHovered(bool bInHovered)
-{
-
-	bIsHovered = bInHovered;
-	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
-	{
-		uint8 Stencil = 0;
-
-		if (bIsHovered)
-		{
-			const bool bIsEnemy = (TeamFlag != 1);
-			Stencil = bIsEnemy ? 2 : 1;
-		}
-		
-		CharacterMesh->SetRenderCustomDepth(bIsHovered);
-		CharacterMesh->SetCustomDepthStencilValue(Stencil);
-		UE_LOG(LogTemp, Warning, TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-	}
-	
-}
-
 void ABVAutobotBase::StartFadeOut()
 {
 	if (bIsFading) return;
@@ -225,6 +204,27 @@ void ABVAutobotBase::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupt
 	
 	AAIController* AIController = Cast<AAIController>(GetController());
 	OnAttackFinished.Broadcast(AIController);
+}
+
+void ABVAutobotBase::SetHovered_Implementation(bool bInHovered)
+{
+	IBVDamageableInterface::SetHovered_Implementation(bInHovered);
+
+	bIsHovered = bInHovered;
+	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
+	{
+		uint8 Stencil = 0;
+
+		if (bIsHovered)
+		{
+			const bool bIsEnemy = (TeamFlag != 1);
+			Stencil = bIsEnemy ? 2 : 1;
+		}
+		
+		CharacterMesh->SetRenderCustomDepth(bIsHovered);
+		CharacterMesh->SetCustomDepthStencilValue(Stencil);
+		UE_LOG(LogTemp, Warning, TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+	}
 }
 
 UAbilitySystemComponent* ABVAutobotBase::GetAbilitySystemComponent() const

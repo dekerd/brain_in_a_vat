@@ -285,3 +285,26 @@ void ABVBuildingBase::SpawnUnit()
 		// Initialization
 	}
 }
+
+void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
+{
+	IBVDamageableInterface::SetHovered_Implementation(bInHovered);
+
+	bIsHovered = bInHovered;
+	if (StaticMeshComponent)
+	{
+		uint8 Stencil = 0;
+
+		if (bIsHovered)
+		{
+			const bool bIsEnemy = (TeamFlag != 1);
+			Stencil = bIsEnemy ? 2 : 1;
+		}
+
+		StaticMeshComponent->SetRenderCustomDepth(bIsHovered);
+		StaticMeshComponent->SetCustomDepthStencilValue(Stencil);
+
+		FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
+	}
+}

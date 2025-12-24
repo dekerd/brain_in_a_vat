@@ -4,8 +4,11 @@
 
 #include "CoreMinimal.h"
 #include "GenericTeamAgentInterface.h"
+#include "InputActionValue.h"
 #include "GameFramework/PlayerController.h"
 #include "BVPlayerController.generated.h"
+
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSelectionChanged, AActor*, NewSelectedActor);
 
 /**
  * 
@@ -26,8 +29,33 @@ protected:
 
 	virtual void PlayerTick(float DeltaTime) override;
 
+// Input Setting
+protected:
+
+	virtual void SetupInputComponent() override;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputMappingContext> InputMappingContext; 
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UInputAction> MoveAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UInputAction> SelectAction;
+	
+	UPROPERTY(BlueprintReadOnly, Category = "Selection")
+	TObjectPtr<AActor> SelectedActor;
+
+	UPROPERTY(BlueprintAssignable, Category = "Selection")
+	FOnSelectionChanged OnSelectionChanged;
+
+	void MoveToLocation(const FInputActionValue& Value);
+	void SelectObject();
+	
+// Mouse Hovering
+protected:
 	UPROPERTY()
-	TObjectPtr<class ABVAutobotBase> HoveredUnit;
+	TObjectPtr<class AActor> HoveredObject;
 	
 private:
 	FGenericTeamId TeamID = FGenericTeamId(1);

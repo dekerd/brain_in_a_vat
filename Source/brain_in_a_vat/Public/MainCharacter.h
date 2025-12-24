@@ -4,7 +4,6 @@
 
 #include "CoreMinimal.h"
 #include "GenericTeamAgentInterface.h"
-#include "InputActionValue.h"
 #include "GameFramework/Character.h"
 #include "MainCharacter.generated.h"
 
@@ -25,9 +24,6 @@ public:
 	// Called every framed
 	virtual void Tick(float DeltaTime) override;
 
-	// Called to bind functionality to input
-	virtual void SetupPlayerInputComponent(class UInputComponent* PlayerInputComponent) override;
-
 	uint32 GetTeamFlag() const { return TeamFlag; }
 
 protected:
@@ -39,24 +35,6 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category="Camera")
 	TObjectPtr<class USpringArmComponent> CameraBoom;
-
-
-	// Input Setting
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
-	TObjectPtr<class UInputMappingContext> InputMappingContext; 
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<class UInputAction> MoveAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<class UInputAction> JumpAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<class UInputAction> RightClickMoveAction;
-
-	void Move(const FInputActionValue& Value);
-	void Look(const FInputActionValue& Value);
-	void MoveToLocation(const FInputActionValue& Value);
 
 	// Team Setting
 	UPROPERTY()

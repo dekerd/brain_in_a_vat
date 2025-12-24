@@ -83,10 +83,6 @@ public:
 	void Attack();
 	void Dead();
 	bool bIsDead = false;
-
-	// UI
-	UFUNCTION()
-	void SetHovered(bool bInHovered);
 	
 	UFUNCTION()
 	virtual void StartFadeOut();
@@ -95,7 +91,7 @@ public:
 	void PerformAttackHit();
 	void ApplyDamageToTarget(AActor* TargetActor);
 
-	// Delegates
+// Delegates
 	UPROPERTY(BlueprintAssignable)
 	FOnAttackFinished OnAttackFinished;
 
@@ -104,7 +100,7 @@ public:
 	FOnHealthChangedUI OnHealthChangedUI;
 	*/
 	
-	// Interface
+// Interface
 	uint32 GetTeamFlag() const { return TeamFlag; }
 	
 protected:
@@ -112,7 +108,7 @@ protected:
 
 	virtual void Tick(float DeltaTime) override;
 
-	// Properties
+// Properties
 
 	UPROPERTY()
 	uint32 TeamFlag;
@@ -123,7 +119,7 @@ protected:
 	UPROPERTY()
 	float AttackSpeed = 1.0;
 
-	// Animations
+// Animations
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
 	TObjectPtr<UAnimMontage> AttackMontage;
 
@@ -133,7 +129,7 @@ protected:
 	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-	// HealthBar Widget
+// HealthBar Widget
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	UWidgetComponent* HealthBarWidgetComponent;
@@ -143,13 +139,15 @@ protected:
 
 	// void OnHealthChanged(const FOnAttributeChangeData& Data);
 
-	// UI
-
+// Mouse-hovering effect
+public:
+	virtual void SetHovered_Implementation(bool bInHovered) override;
+	
+protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	bool bIsHovered = false;
 	
-
-	// Materials for Fade effect
+// Fade effect when destroyed
 
 	UPROPERTY()
 	TArray<UMaterialInstanceDynamic*> FadeMIDs;

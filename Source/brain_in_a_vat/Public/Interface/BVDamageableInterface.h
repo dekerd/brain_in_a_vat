@@ -29,4 +29,8 @@ public:
 
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Combat")
 	bool IsDestroyed() const;
+
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "UI")
+	void SetHovered(bool bInHovered);
+	
 };
