@@ -23,7 +23,7 @@ public:
 	virtual void Tick(float DeltaTime) override;
 
 	// Basic Properties
-	void DestroyBuilding();
+	virtual void DestroyBuilding();
 	bool bIsDestroyed = false;
 
 	// Team Info

@@ -18,4 +18,6 @@ class BRAIN_IN_A_VAT_API ABVGameModeBase : public AGameModeBase
 public:
 
 	ABVGameModeBase();
+
+	void GameOver(uint8 LosingTeam);
 };

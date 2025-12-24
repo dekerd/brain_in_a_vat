@@ -3,6 +3,7 @@
 
 #include "Buildings/Details/BVBaseCamp.h"
 #include "Components/BoxComponent.h"
+#include "BVGameModeBase.h"
 
 
 // Sets default values
@@ -43,4 +44,19 @@ void ABVBaseCamp::OnConstruction(const FTransform& Transform)
 		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
 	}
 	*/
+}
+
+void ABVBaseCamp::DestroyBuilding()
+{
+	// Defeat condition
+	Super::DestroyBuilding();
+
+	if (UWorld* World = GetWorld())
+	{
+		if (ABVGameModeBase* GameMode = Cast<ABVGameModeBase>(World->GetAuthGameMode()))
+		{
+			GameMode->GameOver(TeamFlag);
+		}
+	}
+	
 }
