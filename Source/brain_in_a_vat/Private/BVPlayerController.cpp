@@ -67,31 +67,26 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 	FHitResult Hit;
 	bool bHit = GetHitResultUnderCursor(ECC_MouseHover, false, Hit);
+	AActor* NewHitActor = bHit ? Hit.GetActor() : nullptr;
 
-	IBVDamageableInterface* NewHoveredObject = nullptr;
-	if (bHit)
+	if (NewHitActor != HoveredObject)
 	{
-		AActor* HitActor = Hit.GetActor();
-		if (HitActor)
+		if (HoveredObject)
 		{
-			NewHoveredObject = Cast<IBVDamageableInterface>(HitActor);
-			if (NewHoveredObject)
+			if (HoveredObject->Implements<UBVDamageableInterface>())
 			{
-				if (HoveredObject != HitActor)
-				{
-					NewHoveredObject->SetHovered(true);
-					HoveredObject = HitActor;
-				}
+				IBVDamageableInterface::Execute_SetHovered(HoveredObject, false);
 			}
 		}
-		else
+	}
+
+	HoveredObject = NewHitActor;
+
+	if (HoveredObject)
+	{
+		if (HoveredObject->Implements<UBVDamageableInterface>())
 		{
-			if (HoveredObject)
-			{
-				IBVDamageableInterface* HoveredObject_interface = Cast<IBVDamageableInterface>(HoveredObject);
-				HoveredObject_interface->SetHovered(false);
-			}
-			HoveredObject = nullptr;
+			IBVDamageableInterface::Execute_SetHovered(HoveredObject, true);
 		}
 	}
 }

@@ -28,6 +28,8 @@ ABVBuildingBase::ABVBuildingBase()
 	BoxComponent->SetGenerateOverlapEvents(true);
 	BoxComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	BoxComponent->SetCollisionObjectType(ECC_Building);
+
+	BoxComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
 	BoxComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	BoxComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	BoxComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
@@ -288,7 +290,6 @@ void ABVBuildingBase::SpawnUnit()
 
 void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 {
-	IBVDamageableInterface::SetHovered_Implementation(bInHovered);
 
 	bIsHovered = bInHovered;
 	if (StaticMeshComponent)

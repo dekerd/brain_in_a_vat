@@ -208,8 +208,6 @@ void ABVAutobotBase::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupt
 
 void ABVAutobotBase::SetHovered_Implementation(bool bInHovered)
 {
-	IBVDamageableInterface::SetHovered_Implementation(bInHovered);
-
 	bIsHovered = bInHovered;
 	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
 	{
@@ -223,7 +221,9 @@ void ABVAutobotBase::SetHovered_Implementation(bool bInHovered)
 		
 		CharacterMesh->SetRenderCustomDepth(bIsHovered);
 		CharacterMesh->SetCustomDepthStencilValue(Stencil);
-		UE_LOG(LogTemp, Warning, TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+		
+		FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
 	}
 }
 

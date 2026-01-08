@@ -12,7 +12,10 @@
 #include "BVBuildingBase.generated.h"
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVBuildingBase : public AActor, public IGenericTeamAgentInterface, public IAbilitySystemInterface, public IBVDamageableInterface
+class BRAIN_IN_A_VAT_API ABVBuildingBase :  public AActor,
+											public IGenericTeamAgentInterface,
+											public IAbilitySystemInterface,
+											public IBVDamageableInterface
 {
 	GENERATED_BODY()
 
