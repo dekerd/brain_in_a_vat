@@ -41,8 +41,21 @@ protected:
 	uint32 TeamFlag = 1;
 
 	virtual FGenericTeamId GetGenericTeamId() const override;
+	
+// Inventory and Weapons
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
+	TObjectPtr<UBVItemData> CurrentWeapon;
 
-	// Weapon & Attack Setting
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
+	TArray<TObjectPtr<UBVItemData>> InventoryItems;
+	
+public:
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	void EquipWeapon(UBVItemData* NewWeapon) { CurrentWeapon = NewWeapon; }
+
+	
+	// Attack Setting
 
 	UPROPERTY(EditAnywhere, Category="Combat")
 	TObjectPtr<class USphereComponent> AttackRangeSphere;
