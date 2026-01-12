@@ -19,9 +19,16 @@ ABVItemActor::ABVItemActor()
 	SphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComponent"));
 	RootComponent = SphereComponent;
 	SphereComponent->InitSphereRadius(100.f);
-	SphereComponent->SetCollisionProfileName(TEXT("Trigger"));
+	SphereComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	SphereComponent->SetGenerateOverlapEvents(true);
+	SphereComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
+	SphereComponent->SetCollisionObjectType(ECC_Item);
+	
 	SphereComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
-
+	SphereComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
+	SphereComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	SphereComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
+	
 	// Mesh
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
 	MeshComponent->SetupAttachment(RootComponent);
@@ -76,8 +83,11 @@ void ABVItemActor::Tick(float DeltaTime)
 
 void ABVItemActor::SetHovered_Implementation(bool bInHovered)
 {
-	IBVDamageableInterface::SetHovered_Implementation(bInHovered);
 
+	uint8 Stencil = 1;
+	FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
+	
 	if (MeshComponent)
 	{
 		MeshComponent->SetRenderCustomDepth(bInHovered);
