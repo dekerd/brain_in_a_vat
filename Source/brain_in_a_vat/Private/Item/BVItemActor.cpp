@@ -4,22 +4,32 @@
 #include "Item/BVItemActor.h"
 #include "Components/StaticMeshComponent.h"
 #include "Components/SphereComponent.h"
+#include "GameFramework/RotatingMovementComponent.h"
 #include "MainCharacter.h"
 #include "Item/BVItemData.h"
+#include "Collision/BVCollision.h"
 
 // Sets default values
 ABVItemActor::ABVItemActor()
 {
 
+	PrimaryActorTick.bCanEverTick = true;
+
+	// Sphere Component
 	SphereComponent = CreateDefaultSubobject<USphereComponent>(TEXT("SphereComponent"));
 	RootComponent = SphereComponent;
 	SphereComponent->InitSphereRadius(100.f);
 	SphereComponent->SetCollisionProfileName(TEXT("Trigger"));
+	SphereComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
 
+	// Mesh
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
 	MeshComponent->SetupAttachment(RootComponent);
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	
+
+	// Auto-Rotation Component
+	RotatingComponent = CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotatingMovementComponent"));
+	RotatingComponent->RotationRate = FRotator(0.f, RotationRate, 0.f);
 }
 
 // Called when the game starts or when spawned
@@ -27,17 +37,57 @@ void ABVItemActor::BeginPlay()
 {
 	Super::BeginPlay();
 
+	InitialRelativeLocation = MeshComponent->GetRelativeLocation();
+	SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVItemActor::OnOverlapBegin);
+}
+
+void ABVItemActor::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
 	if (ItemData && ItemData->PickupMesh)
 	{
 		MeshComponent->SetStaticMesh(ItemData->PickupMesh);
-	}
 
-	SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVItemActor::OnOverlapBegin);
+		FBox MeshBounds = ItemData->PickupMesh->GetBoundingBox();
+		FVector Extent = MeshBounds.GetExtent();
+
+		float NewRadius = Extent.GetMax();
+		if (SphereComponent)
+		{
+			SphereComponent->SetSphereRadius(NewRadius + 10.f);
+		}
+	}
+	
+}
+
+void ABVItemActor::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	RunningTime += DeltaTime;
+	float DeltaZ = FMath::Sin(RunningTime * BobbingFrequency) * BobbingAmplitude;
+
+	FVector NewLocation = InitialRelativeLocation;
+	NewLocation.Z += DeltaZ;
+
+	MeshComponent->SetRelativeLocation(NewLocation);
+}
+
+void ABVItemActor::SetHovered_Implementation(bool bInHovered)
+{
+	IBVDamageableInterface::SetHovered_Implementation(bInHovered);
+
+	if (MeshComponent)
+	{
+		MeshComponent->SetRenderCustomDepth(bInHovered);
+		MeshComponent->SetCustomDepthStencilValue(bInHovered? 1:0);
+	}
 	
 }
 
 void ABVItemActor::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+                                  UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 
 	if (AMainCharacter* Player = Cast<AMainCharacter>(OtherActor))
