@@ -305,7 +305,7 @@ void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 		StaticMeshComponent->SetRenderCustomDepth(bIsHovered);
 		StaticMeshComponent->SetCustomDepthStencilValue(Stencil);
 
-		FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
+		// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
 	}
 }

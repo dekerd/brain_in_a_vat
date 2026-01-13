@@ -23,10 +23,11 @@ ABVItemActor::ABVItemActor()
 	SphereComponent->SetGenerateOverlapEvents(true);
 	SphereComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	SphereComponent->SetCollisionObjectType(ECC_Item);
+	SphereComponent->SetCanEverAffectNavigation(false);
 	
 	SphereComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
 	SphereComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
-	SphereComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
+	SphereComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	SphereComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	
 	// Mesh
@@ -37,6 +38,7 @@ ABVItemActor::ABVItemActor()
 	// Auto-Rotation Component
 	RotatingComponent = CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotatingMovementComponent"));
 	RotatingComponent->RotationRate = FRotator(0.f, RotationRate, 0.f);
+	
 }
 
 // Called when the game starts or when spawned
@@ -85,8 +87,8 @@ void ABVItemActor::SetHovered_Implementation(bool bInHovered)
 {
 
 	uint8 Stencil = 1;
-	FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
+	// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
+	// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
 	
 	if (MeshComponent)
 	{
@@ -102,14 +104,8 @@ void ABVItemActor::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AAct
 
 	if (AMainCharacter* Player = Cast<AMainCharacter>(OtherActor))
 	{
+		Player->AddItemToInventory(ItemData);
 		Destroy();
-		
-		/* TODO : Implement Player->AddItemToInventory
-		if (Player->AddItemToInventory(ItemData))
-		{
-			Destroy();
-		}
-		*/
 	}
 	
 }

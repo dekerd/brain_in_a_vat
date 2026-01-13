@@ -7,6 +7,8 @@
 #include "GameFramework/Character.h"
 #include "MainCharacter.generated.h"
 
+class UBVItemData;
+
 UCLASS()
 class BRAIN_IN_A_VAT_API AMainCharacter : public ACharacter, public IGenericTeamAgentInterface
 {
@@ -54,6 +56,8 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void EquipWeapon(UBVItemData* NewWeapon) { CurrentWeapon = NewWeapon; }
 
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool AddItemToInventory(class UBVItemData* ItemData);
 	
 	// Attack Setting
 

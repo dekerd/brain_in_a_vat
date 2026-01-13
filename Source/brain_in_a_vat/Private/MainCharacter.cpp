@@ -16,6 +16,7 @@
 #include "Autobots/BVAutobotBase.h"
 #include "Weapons/Projectiles/BVProjectileBase.h"
 #include "Collision/BVCollision.h"
+#include "Item/BVItemData.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -121,8 +122,22 @@ FGenericTeamId AMainCharacter::GetGenericTeamId() const
 	return IGenericTeamAgentInterface::GetGenericTeamId();
 }
 
+bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
+{
+	if (ItemData)
+	{
+		InventoryItems.Add(ItemData);
+
+		FString DebugMsg = FString::Printf(TEXT("Item Added to Inventory: %s"), *ItemData->ItemName.ToString());
+		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Blue, DebugMsg);
+		return true;
+	}
+
+	return false;
+}
+
 void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+                                               UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 
 	UE_LOG(LogTemp, Warning, TEXT("Target actor adding start : [%s]"), *OtherActor->GetName());
