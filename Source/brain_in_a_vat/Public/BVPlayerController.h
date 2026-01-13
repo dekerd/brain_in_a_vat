@@ -59,4 +59,15 @@ protected:
 	
 private:
 	FGenericTeamId TeamID = FGenericTeamId(1);
+
+// Widgets
+public:
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UBVInventoryWidget> InventoryWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UBVInventoryWidget> InventoryWidget;
+	
 };

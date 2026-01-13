@@ -101,11 +101,9 @@ void ABVItemActor::SetHovered_Implementation(bool bInHovered)
 void ABVItemActor::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,
                                   UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-
 	if (AMainCharacter* Player = Cast<AMainCharacter>(OtherActor))
 	{
 		Player->AddItemToInventory(ItemData);
 		Destroy();
 	}
-	
 }

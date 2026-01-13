@@ -9,6 +9,8 @@
 
 class UBVItemData;
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
+
 UCLASS()
 class BRAIN_IN_A_VAT_API AMainCharacter : public ACharacter, public IGenericTeamAgentInterface
 {
@@ -58,8 +60,14 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	bool AddItemToInventory(class UBVItemData* ItemData);
-	
-	// Attack Setting
+
+	UPROPERTY(BlueprintAssignable, Category = "Inventory")
+	FOnInventoryUpdated OnInventoryUpdated;
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	const TArray<UBVItemData*>& GetInventoryItems() const { return InventoryItems; }
+
+// Attack Setting
 
 	UPROPERTY(EditAnywhere, Category="Combat")
 	TObjectPtr<class USphereComponent> AttackRangeSphere;

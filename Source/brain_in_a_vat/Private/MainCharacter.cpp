@@ -128,8 +128,11 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 	{
 		InventoryItems.Add(ItemData);
 
+		OnInventoryUpdated.Broadcast();
+		
 		FString DebugMsg = FString::Printf(TEXT("Item Added to Inventory: %s"), *ItemData->ItemName.ToString());
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Blue, DebugMsg);
+		
 		return true;
 	}
 

@@ -8,6 +8,7 @@
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "Widget/BVInventoryWidget.h"
 
 ABVPlayerController::ABVPlayerController()
 {
@@ -35,6 +36,14 @@ ABVPlayerController::ABVPlayerController()
 	{
 		SelectAction = SelectActionRef.Object;
 	}
+
+	// [Widgets]
+	// Inventory Widget
+	static ConstructorHelpers::FClassFinder<UBVInventoryWidget> WidgetClassFinder(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/InventoryWidget/WBP_InventoryWidget.WBP_InventoryWidget_C'"));
+	if (WidgetClassFinder.Succeeded())
+	{
+		InventoryWidgetClass = WidgetClassFinder.Class;
+	}
 }
 
 void ABVPlayerController::BeginPlay()
@@ -58,6 +67,18 @@ void ABVPlayerController::BeginPlay()
 	InputMode.SetHideCursorDuringCapture(false);
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(InputMode);
+
+	// <------------------ Widgets ------------------>
+	// Inventory Widget
+	if (InventoryWidgetClass)
+	{
+		InventoryWidget = CreateWidget<UBVInventoryWidget>(this, InventoryWidgetClass);
+		if (InventoryWidget)
+		{
+			InventoryWidget->AddToViewport();
+			InventoryWidget->RefreshInventory();
+		}
+	}
 	
 }
 
