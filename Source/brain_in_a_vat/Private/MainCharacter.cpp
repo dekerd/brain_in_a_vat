@@ -14,7 +14,7 @@
 #include "DrawDebugHelpers.h"
 #include "Components/SphereComponent.h"
 #include "Autobots/BVAutobotBase.h"
-#include "Weapons/Projectiles/BVProjectileBase.h"
+#include "Weapons/Projectiles/BVLaserBeamBase.h"
 #include "Collision/BVCollision.h"
 #include "Item/BVItemData.h"
 
@@ -87,6 +87,9 @@ AMainCharacter::AMainCharacter()
 	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
 	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
 	AttackRangeSphere->SetGenerateOverlapEvents(true);
+
+	// Weapon Cooltime
+	WeaponCoolTime.Init(0.0f, 10);
 	
 }
 
@@ -168,21 +171,73 @@ void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp
 
 void AMainCharacter::AutoFire(float DeltaSecond)
 {
+	// This function will be called for every tick
+	
+	// Fire Default Laser Beam
+	FireDefaultLaserBeam(DeltaSecond);
+
+	// Fire weapons equipped
+	for (int32 i = 0; i < InventoryItems.Num(); ++i)
+	{
+		if (InventoryItems[i])
+		{
+			FireWeapons(DeltaSecond, i);
+		}
+	}
+	
+}
+
+void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
+{
+
+	UBVItemData* Weapon = InventoryItems[WeaponIndex];
+	
+	WeaponCoolTime[WeaponIndex] += DeltaSecond;
+	if (WeaponCoolTime[WeaponIndex] < Weapon->FireInterval) return;
+
+	AActor* Target = FindNearestEnemyInRange();
+	if (Target)
+	{
+		FireDefaultMissile(Weapon, Target);
+		WeaponCoolTime[WeaponIndex] = 0.0f;
+	}
+
+}
+
+void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
+{
+	FString DebugMsg = FString::Printf(TEXT("Fire %s to %s"), *ItemData->ItemName.ToString(), *Target->GetName());
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Blue, DebugMsg);
+
+	if (!ItemData || !Target || !ItemData->ProjectileClass) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	const FVector SpawnLocation = GetActorLocation();
+	const FVector TargetLocation = Target->GetActorLocation();
+	FVector FireDir = (TargetLocation - SpawnLocation).GetSafeNormal();
+
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.Instigator = this;
+
+	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
+		ItemData->ProjectileClass,
+		SpawnLocation,
+		FireDir.Rotation(),
+		Params);
+	
+}
+
+void AMainCharacter::FireDefaultLaserBeam(float DeltaSecond)
+{
 
 	TimeSinceLastShot += DeltaSecond;
 	if (TimeSinceLastShot < FireInterval) return;
 
 	AActor* Target = FindNearestEnemyInRange();
 	if (!Target) return;
-
-	FireToTarget(Target);
-	TimeSinceLastShot = 0.f;
-}
-
-void AMainCharacter::FireToTarget(AActor* Target)
-{
-	
-	if (!Target ) return;
 
 	UWorld* World = GetWorld();
 	if (!World) return;
@@ -197,15 +252,18 @@ void AMainCharacter::FireToTarget(AActor* Target)
 	Params.Owner = this;
 	Params.Instigator = this;
 
-	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(ABVProjectileBase::StaticClass(), FireLocation, FireDir.Rotation(), Params);
+	// Default Laser
+	ABVLaserBeamBase* Projectile = World->SpawnActor<ABVLaserBeamBase>(ABVLaserBeamBase::StaticClass(), FireLocation, FireDir.Rotation(), Params);
 	if (Projectile)
 	{
 		Projectile->InitVelocity(FireDir);
 		Projectile->InitBeamEnd(FireLocation, TargetLocation);
-
 	}
+
+	TimeSinceLastShot = 0.f;
 	
 }
+
 
 class AActor* AMainCharacter::FindNearestEnemyInRange() const
 {

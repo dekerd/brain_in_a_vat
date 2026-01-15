@@ -35,5 +35,14 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
 	TSubclassOf<class ABVProjectileBase> ProjectileClass;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+	float FireInterval = 1.0f;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+	float DamageAmount = 20.f;
+
+	UPROPERTY(EditAnywhere, Category = "Weapon")
+	float FireRange = 100.f;
 	
 };

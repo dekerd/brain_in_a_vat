@@ -10,27 +10,26 @@ UCLASS()
 class BRAIN_IN_A_VAT_API ABVProjectileBase : public AActor
 {
 	GENERATED_BODY()
-
+	
+// Basic Setting
 public:
-	// Sets default values for this actor's properties
+
 	ABVProjectileBase();
-
-	void InitBeamEnd(const FVector& StartLocation, const FVector& EndLocation);
-
+	
 	void InitVelocity(const FVector& FireDir);
 
 protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
 	TObjectPtr<class USphereComponent> CollisionComponent;
-
-	UPROPERTY(VisibleAnywhere, Category = "Projectile")
-	TObjectPtr<class UNiagaraComponent> NiagaraComponent;
-
+	
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
 	TObjectPtr<class UProjectileMovementComponent> ProjectileMovement;
 
-	// GAS
+// GAS
+public:
+	
+protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> DamageEffect;

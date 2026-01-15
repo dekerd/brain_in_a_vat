@@ -47,12 +47,6 @@ protected:
 	virtual FGenericTeamId GetGenericTeamId() const override;
 	
 // Inventory and Weapons
-protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
-	TObjectPtr<UBVItemData> CurrentWeapon;
-
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
-	TArray<TObjectPtr<UBVItemData>> InventoryItems;
 	
 public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
@@ -66,6 +60,16 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	const TArray<UBVItemData*>& GetInventoryItems() const { return InventoryItems; }
+
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
+	TObjectPtr<UBVItemData> CurrentWeapon;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
+	TArray<TObjectPtr<UBVItemData>> InventoryItems;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
+	TArray<float> WeaponCoolTime;
 
 // Attack Setting
 
@@ -99,6 +103,10 @@ public:
 
 	class AActor* FindNearestEnemyInRange() const;
 
-	void FireToTarget(AActor* Target);
+	void FireDefaultLaserBeam(float DeltaSecond);
+
+	void FireWeapons(float DeltaSecond, int32 WeaponIndex);
+
+	void FireDefaultMissile(UBVItemData* ItemData, AActor* Target);
 
 };

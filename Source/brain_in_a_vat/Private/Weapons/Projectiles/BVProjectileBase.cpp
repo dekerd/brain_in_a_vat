@@ -3,14 +3,12 @@
 
 #include "Weapons/Projectiles/BVProjectileBase.h"
 #include "NiagaraComponent.h"
-#include "NiagaraSystem.h"
 #include "Components/SphereComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Collision/BVCollision.h"
 #include "Autobots/BVAutobotBase.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
-#include "GAS/CombatAttributeSet.h"
 #include "GAS/GAStags.h"
 #include "Components/PrimitiveComponent.h"
 #include "MainCharacter.h"
@@ -35,27 +33,6 @@ ABVProjectileBase::ABVProjectileBase()
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVProjectileBase::OnCollisionBeginOverlap);
 
-	// Niagara
-	NiagaraComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Niagara"));
-	NiagaraComponent->SetupAttachment(RootComponent);
-	NiagaraComponent->bAutoActivate = true;
-
-	static ConstructorHelpers::FObjectFinder<UNiagaraSystem> NS_LaserRef(TEXT("/Script/Niagara.NiagaraSystem'/Game/VFX/magic/magic2.magic2'"));
-	if (NS_LaserRef.Succeeded())
-	{
-		NiagaraComponent->SetAsset(NS_LaserRef.Object);
-	}
-	
-	// Projectile Movement
-	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
-	ProjectileMovement->InitialSpeed = 10000.f;
-	ProjectileMovement->MaxSpeed = 10000.f;
-	ProjectileMovement->bRotationFollowsVelocity = true;
-	ProjectileMovement->bShouldBounce = false;
-	ProjectileMovement->ProjectileGravityScale = 0.f;
-
-	InitialLifeSpan = 2.f;
-
 	// GAS
 	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_LaserDamage.GE_LaserDamage_C'"));
 	if (DamageGEClass.Succeeded())
@@ -63,14 +40,6 @@ ABVProjectileBase::ABVProjectileBase()
 		DamageEffect = DamageGEClass.Class;
 	}
 	
-}
-
-void ABVProjectileBase::InitBeamEnd(const FVector& StartLocation, const FVector& EndLocation)
-{
-	if (!NiagaraComponent) return;
-
-	NiagaraComponent->SetNiagaraVariablePosition(TEXT("BeamStart"), StartLocation);
-	NiagaraComponent->SetNiagaraVariablePosition(TEXT("BeamEnd"), EndLocation);
 }
 
 void ABVProjectileBase::InitVelocity(const FVector& FireDir)
