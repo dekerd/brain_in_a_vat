@@ -28,6 +28,7 @@ ABVItemActor::ABVItemActor()
 	SphereComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
 	SphereComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	SphereComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	SphereComponent->SetCollisionResponseToChannel(ECC_Player, ECR_Overlap);
 	SphereComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 	
 	// Mesh

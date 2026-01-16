@@ -4,6 +4,7 @@
 #include "Weapons/Projectiles/BVProjectileBase.h"
 #include "NiagaraComponent.h"
 #include "Components/SphereComponent.h"
+#include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Collision/BVCollision.h"
 #include "Autobots/BVAutobotBase.h"
@@ -12,6 +13,7 @@
 #include "GAS/GAStags.h"
 #include "Components/PrimitiveComponent.h"
 #include "MainCharacter.h"
+#include "Misc/MapErrors.h"
 
 
 // Sets default values
@@ -24,15 +26,21 @@ ABVProjectileBase::ABVProjectileBase()
 	RootComponent = CollisionComponent;
 	CollisionComponent->InitSphereRadius(10.f);
 	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	CollisionComponent->SetCollisionObjectType(ECC_WorldDynamic);
+	CollisionComponent->SetCollisionObjectType(ECC_Projectile);
 	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
-	CollisionComponent->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap); 
+	CollisionComponent->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
+	CollisionComponent->SetCollisionResponseToChannel(ECC_Player, ECR_Ignore); 
 	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
 	CollisionComponent->SetNotifyRigidBodyCollision(true); // For OnHit
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVProjectileBase::OnCollisionBeginOverlap);
 
+	// Mesh
+	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
+	StaticMeshComponent->SetupAttachment(RootComponent);
+	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	
 	// GAS
 	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_LaserDamage.GE_LaserDamage_C'"));
 	if (DamageGEClass.Succeeded())

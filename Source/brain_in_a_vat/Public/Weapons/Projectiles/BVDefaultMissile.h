@@ -6,13 +6,13 @@
 #include "BVProjectileBase.h"
 #include "BVDefaultMissile.generated.h"
 
-UCLASS()
+UCLASS(Blueprintable, BlueprintType)
 class BRAIN_IN_A_VAT_API ABVDefaultMissile : public ABVProjectileBase
 {
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this actor's properties
+
 	ABVDefaultMissile();
 
 protected:

@@ -2,6 +2,7 @@
 
 
 #include "MainCharacter.h"
+#include "Components/PrimitiveComponent.h"
 
 #include <ThirdParty/ShaderConductor/ShaderConductor/External/DirectXShaderCompiler/include/dxc/DXIL/DxilConstants.h>
 
@@ -27,6 +28,12 @@ AMainCharacter::AMainCharacter()
 	// Capsule
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
 	GetCapsuleComponent()->SetCollisionProfileName(TEXT("Pawn"));
+	GetCapsuleComponent()->SetCollisionObjectType(ECC_Player);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
+	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true); // For OnHit
 
 	// Movement
 
@@ -44,7 +51,7 @@ AMainCharacter::AMainCharacter()
 	// Mesh
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.f, 0.f, -96.f), FRotator(0.f, -90.f, 0.f));
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
-	GetMesh()->SetCollisionProfileName(TEXT("CharacterMesh"));
+	GetMesh()->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	static ConstructorHelpers::FObjectFinder<USkeletalMesh> CharacterMeshRef(TEXT("/Script/Engine.SkeletalMesh'/Game/SkeletalMesh/giant_battle_robot_accurig/giant_battle_robot_accurig.giant_battle_robot_accurig'"));
 	if (CharacterMeshRef.Object)
@@ -214,7 +221,10 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 	UWorld* World = GetWorld();
 	if (!World) return;
 
-	const FVector SpawnLocation = GetActorLocation();
+	FVector SpawnLocation = GetActorLocation();
+	FVector ZOffset = FVector(0.0f, 0.0f, 30.0f);
+	SpawnLocation += ZOffset;
+	
 	const FVector TargetLocation = Target->GetActorLocation();
 	FVector FireDir = (TargetLocation - SpawnLocation).GetSafeNormal();
 
@@ -227,6 +237,15 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 		SpawnLocation,
 		FireDir.Rotation(),
 		Params);
+
+	if (Projectile)
+	{
+		if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+		{
+			ProjectileRoot->IgnoreActorWhenMoving(this, true);
+		}
+	}
+
 	
 }
 

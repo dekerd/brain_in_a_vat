@@ -6,7 +6,7 @@
 #include "GameFramework/Actor.h"
 #include "BVProjectileBase.generated.h"
 
-UCLASS()
+UCLASS(Blueprintable, BlueprintType)
 class BRAIN_IN_A_VAT_API ABVProjectileBase : public AActor
 {
 	GENERATED_BODY()
@@ -22,6 +22,9 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
 	TObjectPtr<class USphereComponent> CollisionComponent;
+
+	UPROPERTY(VisibleAnywhere, Category = "Projectile")
+	TObjectPtr<class UStaticMeshComponent> StaticMeshComponent;
 	
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
 	TObjectPtr<class UProjectileMovementComponent> ProjectileMovement;
