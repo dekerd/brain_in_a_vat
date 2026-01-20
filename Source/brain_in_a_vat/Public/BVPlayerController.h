@@ -69,5 +69,19 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<class UBVInventoryWidget> InventoryWidget;
+
+// Background Music
+public:
+
+protected:
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TArray<TObjectPtr<class USoundBase>> BGMPlaylist;
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	float Volume = 1.0f;
+	
+	UPROPERTY()
+	TObjectPtr<class UAudioComponent> BGMComponent;
+
 	
 };

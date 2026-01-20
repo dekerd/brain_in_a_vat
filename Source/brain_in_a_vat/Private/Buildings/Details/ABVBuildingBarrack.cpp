@@ -13,10 +13,6 @@ AABVBuildingBarrack::AABVBuildingBarrack()
 
 	PrimaryActorTick.bCanEverTick = true;
 	
-	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
-	StaticMeshComponent->SetupAttachment(RootComponent);
-	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshRef(TEXT("/Script/Engine.StaticMesh'/Game/buildings/barrack/barrack.barrack'"));
 	if (StaticMeshRef.Object != nullptr)
 	{

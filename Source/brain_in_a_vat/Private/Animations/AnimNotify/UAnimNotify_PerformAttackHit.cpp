@@ -4,7 +4,7 @@
 #include "Animations/AnimNotify/UAnimNotify_PerformAttackHit.h"
 #include "Autobots/BVAutobotBase.h"
 
-void UUAnimNotify_PerformAttackHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
+void UUAnimNotify_PerformAttackHit::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)
 {
 	if (!MeshComp) return;
 

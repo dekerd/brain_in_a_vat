@@ -16,5 +16,5 @@ class BRAIN_IN_A_VAT_API UBVAnimNotify_StartFadeOut : public UAnimNotify
 
 public:
 
-	virtual void Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation) override;
+	virtual void Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animationm, const FAnimNotifyEventReference& EventReference) override;
 };

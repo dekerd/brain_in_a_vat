@@ -4,7 +4,7 @@
 #include "Animations/AnimNotify/BVAnimNotify_StartFadeOut.h"
 #include "Autobots/BVAutobotBase.h"
 
-void UBVAnimNotify_StartFadeOut::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation)
+void UBVAnimNotify_StartFadeOut::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)
 {
 	Super::Notify(MeshComp, Animation);
 

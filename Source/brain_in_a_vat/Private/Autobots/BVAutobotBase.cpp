@@ -15,6 +15,7 @@
 #include "Collision/BVCollision.h"
 #include "Components/WidgetComponent.h"
 #include "Components/BVHealthComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
 
@@ -224,6 +225,24 @@ void ABVAutobotBase::SetHovered_Implementation(bool bInHovered)
 		
 		FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
 		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
+	}
+}
+
+void ABVAutobotBase::PlayFootstepSound()
+{
+	if (FootstepSounds.Num() > 0)
+	{
+		int32 RandomIndex = FMath::RandRange(0, FootstepSounds.Num()-1);
+		UGameplayStatics::PlaySoundAtLocation(this, FootstepSounds[RandomIndex], GetActorLocation(), FootstepSoundVolume);
+	}
+}
+
+void ABVAutobotBase::PlayAttackSound()
+{
+	if (AttackSounds.Num() > 0)
+	{
+		int32 RandomIndex = FMath::RandRange(0, AttackSounds.Num()-1);
+		UGameplayStatics::PlaySoundAtLocation(this, AttackSounds[RandomIndex], GetActorLocation(), AttackSoundVolume);
 	}
 }
 

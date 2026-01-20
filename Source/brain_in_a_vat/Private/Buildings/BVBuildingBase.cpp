@@ -18,6 +18,7 @@
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
 {
+	PrimaryActorTick.bCanEverTick = true;
 
 	// <--------------- Components ----------------> //
 	// Root Component
@@ -33,7 +34,12 @@ ABVBuildingBase::ABVBuildingBase()
 	BoxComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
 	BoxComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
 	BoxComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
-	
+
+	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
+	StaticMeshComponent->SetupAttachment(RootComponent);
+	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	StaticMeshComponent->SetCollisionProfileName(TEXT("Hoverable"));
+
 	// [GAS] ASC & Attributes
 
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
@@ -149,6 +155,15 @@ UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
 void ABVBuildingBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
+
+	Super::OnConstruction(Transform);
+
+	if (StaticMeshComponent && BoxComponent)
+	{
+		FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
+	}
+	
 }
 
 FGenericTeamId ABVBuildingBase::GetTeamId_Implementation() const

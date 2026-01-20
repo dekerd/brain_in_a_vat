@@ -22,6 +22,14 @@ ABVLaserBeamBase::ABVLaserBeamBase()
 	{
 		NiagaraComponent->SetAsset(NS_LaserRef.Object);
 	}
+
+	// Sound
+
+	static ConstructorHelpers::FObjectFinder<USoundBase> FireSoundRef(TEXT("/Script/Engine.SoundWave'/Game/SFX/Weapon/LaserBeam/LaserBeam.LaserBeam'"));
+	if (FireSoundRef.Succeeded())
+	{
+		FireSound = FireSoundRef.Object;
+	}
 	
 	// Projectile Movement
 	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));

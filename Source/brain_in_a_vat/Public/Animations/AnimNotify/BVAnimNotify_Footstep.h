@@ -4,13 +4,13 @@
 
 #include "CoreMinimal.h"
 #include "Animation/AnimNotifies/AnimNotify.h"
-#include "UAnimNotify_PerformAttackHit.generated.h"
+#include "BVAnimNotify_Footstep.generated.h"
 
 /**
  * 
  */
 UCLASS()
-class BRAIN_IN_A_VAT_API UUAnimNotify_PerformAttackHit : public UAnimNotify
+class BRAIN_IN_A_VAT_API UBVAnimNotify_Footstep : public UAnimNotify
 {
 	GENERATED_BODY()
 

@@ -15,6 +15,8 @@ class BRAIN_IN_A_VAT_API ABVProjectileBase : public AActor
 public:
 
 	ABVProjectileBase();
+
+	void BeginPlay() override;
 	
 	void InitVelocity(const FVector& FireDir);
 
@@ -28,6 +30,9 @@ protected:
 	
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
 	TObjectPtr<class UProjectileMovementComponent> ProjectileMovement;
+
+	UPROPERTY(VisibleAnywhere, Category = "Audio")
+	TObjectPtr<class USoundBase> FireSound;
 
 // GAS
 public:

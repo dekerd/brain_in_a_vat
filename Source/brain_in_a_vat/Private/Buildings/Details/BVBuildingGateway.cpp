@@ -13,11 +13,6 @@ ABVBuildingGateway::ABVBuildingGateway()
 {
 	PrimaryActorTick.bCanEverTick = true;
 	
-	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
-	StaticMeshComponent->SetupAttachment(RootComponent);
-	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-	StaticMeshComponent->SetCollisionProfileName(TEXT("Hoverable"));
-	
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshRef(TEXT("/Script/Engine.StaticMesh'/Game/buildings/Gateway/gateway.gateway'"));
 	if (StaticMeshRef.Object != nullptr)
 	{

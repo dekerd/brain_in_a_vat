@@ -80,16 +80,22 @@ protected:
 
 	
 public:
-	void Attack();
-	void Dead();
-	bool bIsDead = false;
+
 	
 	UFUNCTION()
 	virtual void StartFadeOut();
 
-	// Apply Damage when the attack succeeds
-	void PerformAttackHit();
+// Battle
+
+public:
+	bool bIsDead = false;
+	void Attack();
+	void Dead();
+	void PerformAttackHit(); // Apply Damage when the attack succeeds
 	void ApplyDamageToTarget(AActor* TargetActor);
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Attack")
+	float AttackSpeed = 1.0;
 
 // Delegates
 	UPROPERTY(BlueprintAssignable)
@@ -110,14 +116,12 @@ protected:
 
 // Properties
 
-	UPROPERTY()
-	uint32 TeamFlag;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
+	uint8 TeamFlag;
 	
 	UPROPERTY()
 	bool bHasTarget = false;
 
-	UPROPERTY()
-	float AttackSpeed = 1.0;
 
 // Animations
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Animation")
@@ -156,4 +160,23 @@ protected:
 	float FadeDuration = 2.0f;
 	bool bIsFading = false;
 
+// Sound Effects
+public:
+
+	void PlayFootstepSound();
+	void PlayAttackSound();
+	
+protected:
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	TArray<TObjectPtr<class USoundBase>> FootstepSounds;
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	float FootstepSoundVolume = 1.0f;
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	TArray<TObjectPtr<class USoundBase>> AttackSounds;
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	float AttackSoundVolume = 1.0f;
 };

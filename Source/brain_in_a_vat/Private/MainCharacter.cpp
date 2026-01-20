@@ -18,6 +18,7 @@
 #include "Weapons/Projectiles/BVLaserBeamBase.h"
 #include "Collision/BVCollision.h"
 #include "Item/BVItemData.h"
+#include "Kismet/GameplayStatics.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -83,7 +84,6 @@ AMainCharacter::AMainCharacter()
 	Camera->bUsePawnControlRotation = false;
 
 	// Attack Sphere
-
 	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));
 	AttackRangeSphere->SetupAttachment(RootComponent);
 	AttackRangeSphere->InitSphereRadius(AttackRange);
@@ -96,7 +96,7 @@ AMainCharacter::AMainCharacter()
 	AttackRangeSphere->SetGenerateOverlapEvents(true);
 
 	// Weapon Cooltime
-	WeaponCoolTime.Init(0.0f, 10);
+	WeaponCoolTime.Init(0.0f, 5);
 	
 }
 
@@ -138,6 +138,7 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 	{
 		InventoryItems.Add(ItemData);
 
+		PlayRandomPickupSound();
 		OnInventoryUpdated.Broadcast();
 		
 		FString DebugMsg = FString::Printf(TEXT("Item Added to Inventory: %s"), *ItemData->ItemName.ToString());
@@ -247,6 +248,41 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 	}
 
 	
+}
+
+void AMainCharacter::PlayRandomMoveSound()
+{
+	if (MoveSounds.Num() == 0) return;
+
+	float CurrentTime = GetWorld()->GetTimeSeconds();
+	if (CurrentTime - LastMoveSoundTime < MoveSoundCooldown) return;
+
+	int32 RandomIndex = FMath::RandRange(0, MoveSounds.Num()-1);
+	if (MoveSounds[RandomIndex])
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, MoveSounds[RandomIndex], GetActorLocation());
+		LastMoveSoundTime = CurrentTime;
+	}
+}
+
+void AMainCharacter::PlayRandomPickupSound()
+{
+	if (ItemPickupSounds.Num() == 0) return;
+	
+	int32 RandomIndex = FMath::RandRange(0, ItemPickupSounds.Num()-1);
+	if (ItemPickupSounds[RandomIndex])
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, ItemPickupSounds[RandomIndex], GetActorLocation());
+	}
+}
+
+void AMainCharacter::PlayFootstepSound()
+{
+	if (FootstepSounds.Num() > 0)
+	{
+		int32 RandomIndex = FMath::RandRange(0, FootstepSounds.Num()-1);
+		UGameplayStatics::PlaySoundAtLocation(this, FootstepSounds[RandomIndex], GetActorLocation(), 0.045f);
+	}
 }
 
 void AMainCharacter::FireDefaultLaserBeam(float DeltaSecond)

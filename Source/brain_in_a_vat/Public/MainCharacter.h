@@ -17,20 +17,14 @@ class BRAIN_IN_A_VAT_API AMainCharacter : public ACharacter, public IGenericTeam
 	GENERATED_BODY()
 
 public:
-	// Sets default values for this character's properties
 	AMainCharacter();
-
-protected:
-	// Called when the game starts or when spawned
-	virtual void BeginPlay() override;
-
-public:	
-	// Called every framed
 	virtual void Tick(float DeltaTime) override;
 
-	uint32 GetTeamFlag() const { return TeamFlag; }
-
 protected:
+
+	virtual void BeginPlay() override;
+
+// Mesh and Collision Components
 	UPROPERTY(EditAnywhere, Category="Mesh")
 	TObjectPtr<class USkeletalMeshComponent> SkeletalMeshComponent;
 	
@@ -40,7 +34,10 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category="Camera")
 	TObjectPtr<class USpringArmComponent> CameraBoom;
 
-	// Team Setting
+// Team Setting
+public:
+	uint32 GetTeamFlag() const { return TeamFlag; }
+protected:
 	UPROPERTY()
 	uint32 TeamFlag = 1;
 
@@ -108,5 +105,29 @@ protected:
 	void FireWeapons(float DeltaSecond, int32 WeaponIndex);
 
 	void FireDefaultMissile(UBVItemData* ItemData, AActor* Target);
+
+// Sound Effects
+public:
+	void PlayRandomMoveSound();
+
+	void PlayRandomPickupSound();
+
+	void PlayFootstepSound();
+	
+protected:
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	TArray<TObjectPtr<class USoundBase>> FootstepSounds;
+	
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TArray<TObjectPtr<class USoundBase>> MoveSounds;
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TArray<TObjectPtr<class USoundBase>> ItemPickupSounds;
+	
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	float MoveSoundCooldown = 5.0f;
+
+	float LastMoveSoundTime = -10.0f;
 
 };

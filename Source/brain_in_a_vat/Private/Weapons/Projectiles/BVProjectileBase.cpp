@@ -13,6 +13,7 @@
 #include "GAS/GAStags.h"
 #include "Components/PrimitiveComponent.h"
 #include "MainCharacter.h"
+#include "Kismet/GameplayStatics.h"
 #include "Misc/MapErrors.h"
 
 
@@ -48,6 +49,16 @@ ABVProjectileBase::ABVProjectileBase()
 		DamageEffect = DamageGEClass.Class;
 	}
 	
+}
+
+void ABVProjectileBase::BeginPlay()
+{
+	Super::BeginPlay();
+
+	if (FireSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation(), 0.3f);
+	}
 }
 
 void ABVProjectileBase::InitVelocity(const FVector& FireDir)

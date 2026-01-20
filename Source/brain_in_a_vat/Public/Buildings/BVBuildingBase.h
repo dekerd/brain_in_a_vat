@@ -64,7 +64,7 @@ protected:
 
 	virtual void BeginPlay() override;
 	
-	// Building Components
+// Building Components
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UBoxComponent> BoxComponent;
 
@@ -79,7 +79,7 @@ protected:
 
 // Stats
 public:
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, Category = "Data")
 	uint8 TeamFlag;
 
 	const FUnitStats* GetStats() const;
@@ -104,7 +104,7 @@ public:
 	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
 
 // Unit Spawning
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, Category = "Spawn Unit")
 	TSubclassOf<class ABVAutobotBase> SpawnUnitClass;
 
 	UPROPERTY(EditAnywhere, Category = "Spawn Unit")

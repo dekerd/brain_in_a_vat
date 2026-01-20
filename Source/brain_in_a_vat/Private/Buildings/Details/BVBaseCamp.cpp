@@ -10,10 +10,6 @@
 ABVBaseCamp::ABVBaseCamp()
 {
 	PrimaryActorTick.bCanEverTick = true;
-
-	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
-	StaticMeshComponent->SetupAttachment(RootComponent);
-	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	
 	static ConstructorHelpers::FObjectFinder<UStaticMesh> StaticMeshRef(TEXT("/Script/Engine.StaticMesh'/Game/buildings/first_building/low_poly/base_building_low_poly.base_building_low_poly'"));
 	if (StaticMeshRef.Object != nullptr)

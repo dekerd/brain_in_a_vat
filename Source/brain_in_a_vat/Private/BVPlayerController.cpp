@@ -7,7 +7,10 @@
 #include "InputMappingContext.h"
 #include "EnhancedInputComponent.h"
 #include "EnhancedInputSubsystems.h"
+#include "MainCharacter.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "Components/AudioComponent.h"
+#include "Kismet/GameplayStatics.h"
 #include "Widget/BVInventoryWidget.h"
 
 ABVPlayerController::ABVPlayerController()
@@ -79,6 +82,24 @@ void ABVPlayerController::BeginPlay()
 			InventoryWidget->RefreshInventory();
 		}
 	}
+
+	// <------------------ BGM ------------------>
+	if (BGMPlaylist.Num() > 0)
+	{
+		int32 RandomIndex = FMath::RandRange(0, BGMPlaylist.Num() - 1);
+		if (BGMPlaylist[RandomIndex])
+		{
+
+			float SoundDuration = BGMPlaylist[RandomIndex]->GetDuration();
+			float RandomStartTime = FMath::FRandRange(0.f, SoundDuration / 2);
+			BGMComponent = UGameplayStatics::SpawnSound2D(this, BGMPlaylist[RandomIndex],Volume, 1.0f, 0.0f, nullptr, true);
+			if (BGMComponent)
+			{
+				BGMComponent->FadeIn(10.0f, 0.5f, RandomStartTime);
+			}
+
+		}
+	}
 	
 }
 
@@ -137,6 +158,13 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 		{
 			DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
 			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, DestLocation);
+
+			/*
+			if (AMainCharacter* MainCharacter = Cast<AMainCharacter>(ControlledPawn))
+			{
+				MainCharacter->PlayRandomMoveSound();
+			}
+			*/
 		}
 	}
 }
