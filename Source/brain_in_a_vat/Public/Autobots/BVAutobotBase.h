@@ -179,4 +179,10 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category="Audio")
 	float AttackSoundVolume = 1.0f;
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	TObjectPtr<class USoundBase> DeathSounds;
+
+	UPROPERTY(EditAnywhere, Category="Audio")
+	float DeathSoundVolume = 1.0f;
 };

@@ -180,7 +180,8 @@ void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp
 void AMainCharacter::AutoFire(float DeltaSecond)
 {
 	// This function will be called for every tick
-	
+
+	GlobalFireTimer += DeltaSecond;
 	// Fire Default Laser Beam
 	FireDefaultLaserBeam(DeltaSecond);
 
@@ -202,12 +203,14 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 	
 	WeaponCoolTime[WeaponIndex] += DeltaSecond;
 	if (WeaponCoolTime[WeaponIndex] < Weapon->FireInterval) return;
+	if (GlobalFireTimer < MinFireInterval) return;
 
 	AActor* Target = FindNearestEnemyInRange();
 	if (Target)
 	{
 		FireDefaultMissile(Weapon, Target);
 		WeaponCoolTime[WeaponIndex] = 0.0f;
+		GlobalFireTimer = 0.0f;
 	}
 
 }
@@ -229,21 +232,36 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 	const FVector TargetLocation = Target->GetActorLocation();
 	FVector FireDir = (TargetLocation - SpawnLocation).GetSafeNormal();
 
+	FVector LaunchVelocity;
+	float ArcValue = 0.5f;
+
+	bool bHaveResult = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
+		this,
+		LaunchVelocity,
+		SpawnLocation,
+		TargetLocation,
+		GetWorld()->GetGravityZ(),
+		ArcValue);
+
 	FActorSpawnParameters Params;
 	Params.Owner = this;
 	Params.Instigator = this;
 
-	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
-		ItemData->ProjectileClass,
-		SpawnLocation,
-		FireDir.Rotation(),
-		Params);
-
-	if (Projectile)
+	if (bHaveResult)
 	{
-		if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+		ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
+			ItemData->ProjectileClass,
+			SpawnLocation,
+			LaunchVelocity.Rotation(),
+			Params);
+
+		if (Projectile)
 		{
-			ProjectileRoot->IgnoreActorWhenMoving(this, true);
+			Projectile->SetLaunchVelocity(LaunchVelocity);
+			if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+			{
+				ProjectileRoot->IgnoreActorWhenMoving(this, true);
+			}
 		}
 	}
 

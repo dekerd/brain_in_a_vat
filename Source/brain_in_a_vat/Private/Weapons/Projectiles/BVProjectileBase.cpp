@@ -2,7 +2,6 @@
 
 
 #include "Weapons/Projectiles/BVProjectileBase.h"
-#include "NiagaraComponent.h"
 #include "Components/SphereComponent.h"
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
@@ -14,7 +13,8 @@
 #include "Components/PrimitiveComponent.h"
 #include "MainCharacter.h"
 #include "Kismet/GameplayStatics.h"
-#include "Misc/MapErrors.h"
+#include "Weapons/Projectiles/BVLaserBeamBase.h"
+#include "Particles/ParticleSystem.h"
 
 
 // Sets default values
@@ -41,6 +41,10 @@ ABVProjectileBase::ABVProjectileBase()
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	StaticMeshComponent->SetupAttachment(RootComponent);
 	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// Projectile Movement
+	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
+	ProjectileMovement->bRotationFollowsVelocity = true;
 	
 	// GAS
 	static ConstructorHelpers::FClassFinder<UGameplayEffect> DamageGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_LaserDamage.GE_LaserDamage_C'"));
@@ -57,7 +61,7 @@ void ABVProjectileBase::BeginPlay()
 
 	if (FireSound)
 	{
-		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation(), 0.3f);
+		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation(), FireSoundVolume);
 	}
 }
 
@@ -69,8 +73,16 @@ void ABVProjectileBase::InitVelocity(const FVector& FireDir)
 	}
 }
 
+void ABVProjectileBase::SetLaunchVelocity(const FVector& LaunchVelocity)
+{
+	if (ProjectileMovement)
+	{
+		ProjectileMovement->Velocity = LaunchVelocity;
+	}
+}
+
 void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
-	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
+                                                UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
@@ -109,6 +121,23 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 
 	SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -DamageAmount);
 	TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+
+	if (ABVLaserBeamBase* LaserBeam = Cast<ABVLaserBeamBase>(this))
+	{
+		return;
+	}
+
+	if (HitSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
+	}
+
+	if (HitEffect)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, GetActorLocation(), GetActorRotation());
+	}
+	
+	Destroy();
 
 }
 

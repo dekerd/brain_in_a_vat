@@ -342,6 +342,14 @@ void ABVAutobotBase::Dead()
 	// Destroy this object 
 	FTimerHandle DeadTimerHandle;
 	SetLifeSpan(4.0f);
+
+	// Death Sound
+
+	if (DeathSounds)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, DeathSounds, GetActorLocation(), DeathSoundVolume);
+	}
+
 	
 	/*
 	GetWorld()->GetTimerManager().SetTimer(

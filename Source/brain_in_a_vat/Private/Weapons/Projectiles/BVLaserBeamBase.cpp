@@ -32,7 +32,6 @@ ABVLaserBeamBase::ABVLaserBeamBase()
 	}
 	
 	// Projectile Movement
-	ProjectileMovement = CreateDefaultSubobject<UProjectileMovementComponent>(TEXT("ProjectileMovement"));
 	ProjectileMovement->InitialSpeed = 10000.f;
 	ProjectileMovement->MaxSpeed = 10000.f;
 	ProjectileMovement->bRotationFollowsVelocity = true;

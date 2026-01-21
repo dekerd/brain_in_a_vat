@@ -20,6 +20,8 @@ public:
 	
 	void InitVelocity(const FVector& FireDir);
 
+	void SetLaunchVelocity(const FVector& LaunchVelocity);
+
 protected:
 
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
@@ -31,8 +33,20 @@ protected:
 	UPROPERTY(VisibleAnywhere, Category = "Projectile")
 	TObjectPtr<class UProjectileMovementComponent> ProjectileMovement;
 
-	UPROPERTY(VisibleAnywhere, Category = "Audio")
+	UPROPERTY(EditAnywhere, Category = "Audio")
 	TObjectPtr<class USoundBase> FireSound;
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TObjectPtr<class USoundBase> HitSound;
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	float FireSoundVolume = 1.0f;
+	
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	float HitSoundVolume = 1.0f;
+
+	UPROPERTY(EditAnywhere, Category = "VFX")
+	TObjectPtr<class UParticleSystem> HitEffect;
 
 // GAS
 public:

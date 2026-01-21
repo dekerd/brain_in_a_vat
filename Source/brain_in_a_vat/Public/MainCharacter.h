@@ -74,8 +74,10 @@ protected:
 	TObjectPtr<class USphereComponent> AttackRangeSphere;
 
 	float FireInterval = 1.0f;
-	float AttackRange = 600.f;
+	float AttackRange = 450.f;
 	float TimeSinceLastShot = 0.f;
+	float GlobalFireTimer = 0.0f;
+	const float MinFireInterval = 0.2f;
 
 	UPROPERTY()
 	TArray<TWeakObjectPtr<class AActor>> EnemiesInRange;
