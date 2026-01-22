@@ -8,12 +8,14 @@
 #include "Components/BVHealthComponent.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
+#include "Widget/BVNameWidget.h"
 #include "DrawDebugHelpers.h"
 #include "Widget/BVHealthBarWidget.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Perception/AISense_Sight.h"
 #include "Collision/BVCollision.h"
 #include "Data/UnitStats.h"
+#include "Widget/BVNameWidget.h"
 
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
@@ -94,6 +96,33 @@ ABVBuildingBase::ABVBuildingBase()
 	
 	RespawnWidgetComponent->SetupAttachment(RootComponent);
 	RespawnWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+
+	// Name Widget
+	NameWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("NameWidget"));
+
+	static ConstructorHelpers::FClassFinder<UBVNameWidget> NameWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_NameWidget.WBP_NameWidget_C'"));
+	if (NameWidgetRef.Class != nullptr)
+	{
+		NameWidgetClass = NameWidgetRef.Class;
+		NameWidgetComponent->SetWidgetClass(NameWidgetClass);
+	}
+	
+	NameWidgetComponent->SetupAttachment(RootComponent);
+	NameWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+
+	if (NameWidgetComponent)
+	{
+		UUserWidget* WidgetObject = NameWidgetComponent->GetUserWidgetObject();
+		if (WidgetObject)
+		{
+			UBVNameWidget* NameWidget = Cast<UBVNameWidget>(WidgetObject);
+			if (NameWidget)
+			{
+				NameWidget->SetBuildingName(BuildingName);
+			}
+		}
+	}
+
 
 }
 

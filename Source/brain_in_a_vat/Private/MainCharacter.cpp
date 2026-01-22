@@ -73,6 +73,7 @@ AMainCharacter::AMainCharacter()
 	CameraBoom->TargetArmLength = 1300.0f;
 	CameraBoom->SetRelativeRotation(FRotator(-65.f, 0.f, 0.f));
 	CameraBoom->bUsePawnControlRotation = false;
+	CameraBoom->bDoCollisionTest = false;
 	
 	// --> For Quarter View
 	CameraBoom->bInheritPitch = false;
@@ -171,10 +172,10 @@ void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedCo
 void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
-	ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OtherActor);
-	if (!Unit) return;
-
-	EnemiesInRange.Remove(Unit);
+	if (OtherActor)
+	{
+		EnemiesInRange.Remove(OtherActor);
+	}
 }
 
 void AMainCharacter::AutoFire(float DeltaSecond)

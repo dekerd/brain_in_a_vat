@@ -28,6 +28,7 @@ public:
 	// Basic Properties
 	virtual void DestroyBuilding();
 	bool bIsDestroyed = false;
+	
 
 	// Team Info
 	virtual FGenericTeamId GetGenericTeamId() const override;
@@ -92,6 +93,9 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	FName StatRowName;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
+	FText BuildingName = FText::FromString(TEXT("Default Building Name"));
+
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> InitStatsEffect;
 	
@@ -113,9 +117,10 @@ public:
 
 	UFUNCTION()
 	void SpawnUnit();
+	FTimerHandle SpawnTimerHandle;
 	
-// Respawn Cooltime Widget
-	
+// Widgets
+public:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UWidgetComponent> RespawnWidgetComponent;
 
@@ -124,16 +129,24 @@ public:
 
 	UPROPERTY()
 	TObjectPtr<class UBVSpawnCooltimeBar> RespawnWidget;
-
-	FTimerHandle SpawnTimerHandle;
-
-// HealthBar Widget
-
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	UWidgetComponent* HealthBarWidgetComponent;
 
 	UPROPERTY()
 	TSubclassOf<UUserWidget> HealthBarWidgetClass;
+
+	UPROPERTY()
+	UWidgetComponent* NameWidgetComponent;
+
+	UPROPERTY()
+	TSubclassOf<UUserWidget> NameWidgetClass;
+
+protected:
+	
+
+
+	
 
 // Mouse-hovering effect
 public:
