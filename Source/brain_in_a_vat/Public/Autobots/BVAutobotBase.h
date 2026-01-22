@@ -28,9 +28,12 @@ class BRAIN_IN_A_VAT_API ABVAutobotBase : public ACharacter, public IGenericTeam
 public:
 	ABVAutobotBase();
 
-// Team Info
+// Unit Information
 public:
 	virtual FGenericTeamId GetGenericTeamId() const override;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data")
+	FText UnitName = FText::FromString(TEXT("Default Unit Name"));
 
 // Gameplay Ability System (GAS)
 public:
@@ -80,7 +83,6 @@ protected:
 
 	
 public:
-
 	
 	UFUNCTION()
 	virtual void StartFadeOut();
@@ -133,7 +135,8 @@ protected:
 	UFUNCTION()
 	void OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupted);
 
-// HealthBar Widget
+// Widgets
+public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	UWidgetComponent* HealthBarWidgetComponent;
@@ -141,7 +144,14 @@ protected:
 	UPROPERTY()
 	TSubclassOf<UUserWidget> HealthBarWidgetClass;
 
-	// void OnHealthChanged(const FOnAttributeChangeData& Data);
+	UPROPERTY()
+	UWidgetComponent* UnitNameWidgetComponent;
+
+	UPROPERTY()
+	TSubclassOf<UUserWidget> UnitNameWidgetClass;
+
+
+protected:
 
 // Mouse-hovering effect
 public:

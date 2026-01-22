@@ -141,11 +141,6 @@ public:
 
 	UPROPERTY()
 	TSubclassOf<UUserWidget> NameWidgetClass;
-
-protected:
-	
-
-
 	
 
 // Mouse-hovering effect

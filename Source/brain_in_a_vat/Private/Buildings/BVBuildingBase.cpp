@@ -109,21 +109,7 @@ ABVBuildingBase::ABVBuildingBase()
 	
 	NameWidgetComponent->SetupAttachment(RootComponent);
 	NameWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-
-	if (NameWidgetComponent)
-	{
-		UUserWidget* WidgetObject = NameWidgetComponent->GetUserWidgetObject();
-		if (WidgetObject)
-		{
-			UBVNameWidget* NameWidget = Cast<UBVNameWidget>(WidgetObject);
-			if (NameWidget)
-			{
-				NameWidget->SetBuildingName(BuildingName);
-			}
-		}
-	}
-
-
+	
 }
 
 void ABVBuildingBase::Tick(float DeltaTime)
@@ -185,9 +171,7 @@ void ABVBuildingBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
-	Super::OnConstruction(Transform);
-
-	if (StaticMeshComponent && BoxComponent)
+	if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh() && BoxComponent)
 	{
 		FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
 		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
@@ -269,6 +253,20 @@ void ABVBuildingBase::BeginPlay()
 			true,
 			RespawnInterval
 			);
+	}
+
+	// Name Widget
+	if (NameWidgetComponent)
+	{
+		UUserWidget* WidgetObject = NameWidgetComponent->GetUserWidgetObject();
+		if (WidgetObject)
+		{
+			UBVNameWidget* NameWidget = Cast<UBVNameWidget>(WidgetObject);
+			if (NameWidget)
+			{
+				NameWidget->SetBuildingName(BuildingName);
+			}
+		}
 	}
 	
 }
