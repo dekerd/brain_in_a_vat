@@ -11,6 +11,7 @@
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
+#include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
 
 ABVPlayerController::ABVPlayerController()
@@ -182,6 +183,28 @@ void ABVPlayerController::SelectObject()
 		if (SelectedActor)
 		{
 			UE_LOG(LogTemp, Log, TEXT("Selected: %s"), *SelectedActor->GetName())
+		}
+	}
+}
+
+void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
+{
+	if (!GoldPopupWidgetClass) return;
+
+	UUserWidget* NewWidget = CreateWidget<UUserWidget>(this, GoldPopupWidgetClass);
+	if (NewWidget)
+	{
+		if (UBVGoldPopupWidget* GoldWidget = Cast<UBVGoldPopupWidget>(NewWidget))
+		{
+			GoldWidget->SetGoldAmount(Amount);
+		}
+
+		NewWidget->AddToViewport();
+
+		FVector2D ScreenPosition;
+		if (ProjectWorldLocationToScreen(WorldLocation, ScreenPosition))
+		{
+			NewWidget->SetPositionInViewport(ScreenPosition);
 		}
 	}
 }

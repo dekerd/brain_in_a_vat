@@ -4,6 +4,7 @@
 #include "BVGameModeBase.h"
 #include "MainCharacter.h"
 #include "BVPlayerController.h"
+#include "BVPlayerState.h"
 #include "Kismet/GameplayStatics.h"
 
 ABVGameModeBase::ABVGameModeBase()
@@ -26,6 +27,9 @@ ABVGameModeBase::ABVGameModeBase()
 		FString DebugMsg = FString::Printf(TEXT("Cannot find mainplay class"));
 		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, DebugMsg);
 	}
+
+	// PlayerState
+	PlayerStateClass = ABVPlayerState::StaticClass();
 }
 
 void ABVGameModeBase::GameOver(uint8 LosingTeam)

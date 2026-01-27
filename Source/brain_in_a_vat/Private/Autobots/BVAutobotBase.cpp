@@ -11,6 +11,7 @@
 #include "GAS/GASTags.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "BrainComponent.h"
+#include "BVPlayerState.h"
 #include "Animations/BVAnimInstance.h"
 #include "Collision/BVCollision.h"
 #include "Components/WidgetComponent.h"
@@ -19,6 +20,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
 #include "Widget/BVUnitNameWidget.h"
+#include "BVPlayerController.h"
 
 
 // Sets default values
@@ -302,6 +304,8 @@ void ABVAutobotBase::ApplyInitStatFromDataTable()
 
 	if (!ASC) return;
 	if (!InitStatsEffect) return;
+
+
 	
 	const FUnitStats* UnitStats = GetUnitStats();
 	if (!UnitStats) return;
@@ -379,18 +383,24 @@ void ABVAutobotBase::Dead()
 		UGameplayStatics::PlaySoundAtLocation(this, DeathSounds, GetActorLocation(), DeathSoundVolume);
 	}
 
-	
-	/*
-	GetWorld()->GetTimerManager().SetTimer(
-		DeadTimerHandle,
-		FTimerDelegate::CreateLambda([this]()
+	// If Enemy, pay the rewards
+	if (TeamFlag == 2)
+	{
+		ABVPlayerController* PC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController());
+		if (PC)
 		{
-			Destroy();
-		}),
-		4.0f,
-		false);
-	*/
+			ABVPlayerState* PS = PC->GetPlayerState<ABVPlayerState>();
+			const FUnitStats* Stats = GetUnitStats();
 
+			if (PS && Stats)
+			{
+				FVector PopupLocation = GetActorLocation() + FVector(0.f, 0.f, 100.f);
+
+				PC->ShowGoldReward(Stats->GoldReward, PopupLocation);
+				PS->AddRewards(Stats->GoldReward, Stats->ExpReward);
+			}
+		}
+	}
 }
 
 void ABVAutobotBase::PerformAttackHit()

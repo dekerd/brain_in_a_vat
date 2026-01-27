@@ -60,7 +60,8 @@ protected:
 private:
 	FGenericTeamId TeamID = FGenericTeamId(1);
 
-// Widgets
+// <--------------- Widgets --------------->
+// Inventory Widget
 public:
 
 protected:
@@ -69,6 +70,14 @@ protected:
 
 	UPROPERTY()
 	TObjectPtr<class UBVInventoryWidget> InventoryWidget;
+
+// Gold Popup Widget
+public:
+	void ShowGoldReward(int32 Amount, FVector WorldLocation);
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> GoldPopupWidgetClass;
 
 // Background Music
 public:

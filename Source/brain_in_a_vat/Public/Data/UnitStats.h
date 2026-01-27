@@ -25,5 +25,11 @@ struct FUnitStats : public FTableRowBase
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float AttackRange = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	int32 GoldReward = 10;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly)
+	float ExpReward = 100.f;
 	
 };
