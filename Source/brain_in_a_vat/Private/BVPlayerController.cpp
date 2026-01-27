@@ -196,15 +196,10 @@ void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
 	{
 		if (UBVGoldPopupWidget* GoldWidget = Cast<UBVGoldPopupWidget>(NewWidget))
 		{
-			GoldWidget->SetGoldAmount(Amount);
+			GoldWidget->InitPopup(Amount, WorldLocation);
 		}
 
 		NewWidget->AddToViewport();
-
-		FVector2D ScreenPosition;
-		if (ProjectWorldLocationToScreen(WorldLocation, ScreenPosition))
-		{
-			NewWidget->SetPositionInViewport(ScreenPosition);
-		}
+		
 	}
 }

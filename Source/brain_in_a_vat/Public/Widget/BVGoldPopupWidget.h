@@ -15,9 +15,14 @@ class BRAIN_IN_A_VAT_API UBVGoldPopupWidget : public UUserWidget
 	GENERATED_BODY()
 
 public:
-	void SetGoldAmount(int32 Amount);
+	
+	void InitPopup(int32 Amount, FVector WorldLocation);
 	
 protected:
+
+	virtual void NativeTick(const FGeometry& MyGeometry, float InDeltaTime) override;
+
+	FVector TargetWorldLocation;
 
 	UPROPERTY(meta = (BindWidget))
 	class UTextBlock* GoldAmountText;
