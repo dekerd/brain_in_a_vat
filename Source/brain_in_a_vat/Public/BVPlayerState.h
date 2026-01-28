@@ -6,6 +6,8 @@
 #include "GameFramework/PlayerState.h"
 #include "BVPlayerState.generated.h"
 
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGoldChange, int32, NewGold);
+
 /**
  * 
  */
@@ -23,6 +25,9 @@ public:
 
 	UFUNCTION(BlueprintCallable, Category = "Resources")
 	float GetExperience() const {return Experience;}
+
+	UPROPERTY(BlueprintAssignable, Category = "Events")
+	FOnGoldChange OnGoldChange;
 
 protected:
 

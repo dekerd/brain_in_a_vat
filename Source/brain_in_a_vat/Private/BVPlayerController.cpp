@@ -41,13 +41,6 @@ ABVPlayerController::ABVPlayerController()
 		SelectAction = SelectActionRef.Object;
 	}
 
-	// [Widgets]
-	// Inventory Widget
-	static ConstructorHelpers::FClassFinder<UBVInventoryWidget> WidgetClassFinder(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/InventoryWidget/WBP_InventoryWidget.WBP_InventoryWidget_C'"));
-	if (WidgetClassFinder.Succeeded())
-	{
-		InventoryWidgetClass = WidgetClassFinder.Class;
-	}
 }
 
 void ABVPlayerController::BeginPlay()
@@ -73,6 +66,17 @@ void ABVPlayerController::BeginPlay()
 	SetInputMode(InputMode);
 
 	// <------------------ Widgets ------------------>
+	// MainHUDWidget
+	if (MainHUDWidgetClass)
+	{
+		MainHUDWidget = CreateWidget<UUserWidget>(this, MainHUDWidgetClass);
+		if (MainHUDWidget)
+		{
+			MainHUDWidget->AddToViewport();
+		}
+	}
+	
+	/*
 	// Inventory Widget
 	if (InventoryWidgetClass)
 	{
@@ -83,6 +87,18 @@ void ABVPlayerController::BeginPlay()
 			InventoryWidget->RefreshInventory();
 		}
 	}
+
+	// Resource Widget
+	if (ResourceHUDClass)
+	{
+		ResourceHUD = CreateWidget<UUserWidget>(this, ResourceHUDClass);
+		if (ResourceHUD)
+		{
+			UE_LOG(LogTemp, Warning, TEXT("Resource widget added!!"));
+			ResourceHUD->AddToViewport(10);
+		}
+	}
+	*/
 
 	// <------------------ BGM ------------------>
 	if (BGMPlaylist.Num() > 0)
@@ -191,6 +207,7 @@ void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
 {
 	if (!GoldPopupWidgetClass) return;
 
+	// Widget
 	UUserWidget* NewWidget = CreateWidget<UUserWidget>(this, GoldPopupWidgetClass);
 	if (NewWidget)
 	{
@@ -201,5 +218,11 @@ void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
 
 		NewWidget->AddToViewport();
 		
+	}
+
+	// Gold Pickup Sound
+	if (GoldPickupSound)
+	{
+		UGameplayStatics::PlaySound2D(this, GoldPickupSound, GoldPickupSoundVolume, 1.5f);
 	}
 }

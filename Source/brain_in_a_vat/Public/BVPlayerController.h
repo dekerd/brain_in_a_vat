@@ -61,6 +61,16 @@ private:
 	FGenericTeamId TeamID = FGenericTeamId(1);
 
 // <--------------- Widgets --------------->
+// Main HUD Widget
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> MainHUDWidgetClass;
+	
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> MainHUDWidget;
+
+/*
+protected:
 // Inventory Widget
 public:
 
@@ -71,6 +81,17 @@ protected:
 	UPROPERTY()
 	TObjectPtr<class UBVInventoryWidget> InventoryWidget;
 
+// Resource Widget
+public:
+	
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> ResourceHUDClass;
+	
+	UPROPERTY()	
+	TObjectPtr<class UUserWidget> ResourceHUD;
+*/
+	
 // Gold Popup Widget
 public:
 	void ShowGoldReward(int32 Amount, FVector WorldLocation);
@@ -79,6 +100,7 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<class UUserWidget> GoldPopupWidgetClass;
 
+	
 // Background Music
 public:
 
@@ -92,5 +114,15 @@ protected:
 	UPROPERTY()
 	TObjectPtr<class UAudioComponent> BGMComponent;
 
+// Sound Effects
+public:
+
+protected:
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TObjectPtr<class USoundBase> GoldPickupSound;
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	float GoldPickupSoundVolume = 1.0f;
 	
 };

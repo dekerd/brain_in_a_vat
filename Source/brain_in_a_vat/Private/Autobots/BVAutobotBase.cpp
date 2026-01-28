@@ -345,6 +345,13 @@ void ABVAutobotBase::Dead()
 	if (bIsDead) return;
 	bIsDead = true;
 
+	// Stop Any playing montage
+	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
+	if (AnimInstance)
+	{
+		AnimInstance->Montage_Stop(0.2f);
+	}
+
 	// Stop Movement
 	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
 	{
