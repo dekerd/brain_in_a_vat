@@ -19,7 +19,6 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
-#include "Widget/BVUnitNameWidget.h"
 #include "BVPlayerController.h"
 
 
@@ -80,19 +79,7 @@ ABVAutobotBase::ABVAutobotBase()
 		HealthBarWidgetClass = HealthBarWidgetClassRef.Class;
 		HealthBarWidgetComponent->SetWidgetClass(HealthBarWidgetClass);
 	}
-	
-	// UnitNameWidget
-	UnitNameWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("UnitNameWidgetComponent"));
-	static ConstructorHelpers::FClassFinder<UBVUnitNameWidget> UnitNameWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_UnitNameWidget.WBP_UnitNameWidget_C'"));
-	if (UnitNameWidgetRef.Class != nullptr)
-	{
-		UnitNameWidgetClass = UnitNameWidgetRef.Class;
-		UnitNameWidgetComponent->SetWidgetClass(UnitNameWidgetClass);
-	}
-	UnitNameWidgetComponent->SetupAttachment(RootComponent);
-	UnitNameWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	
-	
+
 	// Gameplay Ability System (GAS)
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
 	ASC->SetIsReplicated(true);
