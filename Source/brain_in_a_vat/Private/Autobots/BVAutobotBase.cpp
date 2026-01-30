@@ -114,14 +114,6 @@ ABVAutobotBase::ABVAutobotBase()
 
 }
 
-FGenericTeamId ABVAutobotBase::GetGenericTeamId() const
-{
-	if (const IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(GetController()))
-	{
-		return TeamAgent->GetGenericTeamId();
-	}
-	return IGenericTeamAgentInterface::GetGenericTeamId();
-}
 
 // Called when the game starts or when spawned
 void ABVAutobotBase::BeginPlay()
@@ -169,21 +161,7 @@ void ABVAutobotBase::BeginPlay()
 			}
 		}
 	}
-
-	if (UnitNameWidgetComponent)
-	{
-		UUserWidget* WidgetObject = UnitNameWidgetComponent->GetUserWidgetObject();
-		if (WidgetObject)
-		{
-			UBVUnitNameWidget* NameWidget = Cast<UBVUnitNameWidget>(WidgetObject);
-			if (NameWidget)
-			{
-				NameWidget->SetUnitName(UnitName);
-			}
-		}
-	}
 	
-
 	// Setting Material
 	
 	FadeMIDs.Empty();
@@ -236,27 +214,6 @@ void ABVAutobotBase::OnAttackMontageEnded(UAnimMontage* Montage, bool bInterrupt
 	
 	AAIController* AIController = Cast<AAIController>(GetController());
 	OnAttackFinished.Broadcast(AIController);
-}
-
-void ABVAutobotBase::SetHovered_Implementation(bool bInHovered)
-{
-	bIsHovered = bInHovered;
-	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
-	{
-		uint8 Stencil = 0;
-
-		if (bIsHovered)
-		{
-			const bool bIsEnemy = (TeamFlag != 1);
-			Stencil = bIsEnemy ? 2 : 1;
-		}
-		
-		CharacterMesh->SetRenderCustomDepth(bIsHovered);
-		CharacterMesh->SetCustomDepthStencilValue(Stencil);
-		
-		// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
-	}
 }
 
 void ABVAutobotBase::PlayFootstepSound()

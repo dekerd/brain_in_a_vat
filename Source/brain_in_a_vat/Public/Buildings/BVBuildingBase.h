@@ -19,25 +19,20 @@ class BRAIN_IN_A_VAT_API ABVBuildingBase :  public AActor,
 {
 	GENERATED_BODY()
 
+// Initialization
 public:
-	// Sets default values for this actor's properties
-	ABVBuildingBase();
 
+	ABVBuildingBase();
 	virtual void Tick(float DeltaTime) override;
 
-	// Basic Properties
-	virtual void DestroyBuilding();
-	bool bIsDestroyed = false;
-	
+// Team Setting
+public:
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamID = NewTeamID; }
+	virtual FGenericTeamId GetGenericTeamId() const override { return TeamID; }
 
-	// Team Info
-	virtual FGenericTeamId GetGenericTeamId() const override;
+	UPROPERTY(EditAnywhere, Category = "Team")
+	FGenericTeamId TeamID = FGenericTeamId(0);
 
-	// GAS Public Getter
-	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
-	class UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
-
-	// Interface
 	uint32 GetTeamFlag() const { return TeamFlag; }
 
 // Capsule Offset
@@ -62,7 +57,6 @@ public:
 	virtual bool IsDestroyed_Implementation() const override;
 
 protected:
-
 	virtual void BeginPlay() override;
 	
 // Building Components
@@ -107,6 +101,9 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
 
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+	class UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
+
 // Unit Spawning
 	UPROPERTY(EditAnywhere, Category = "Spawn Unit")
 	TSubclassOf<class ABVAutobotBase> SpawnUnitClass;
@@ -118,6 +115,10 @@ public:
 	UFUNCTION()
 	void SpawnUnit();
 	FTimerHandle SpawnTimerHandle;
+
+// Destruction
+	virtual void DestroyBuilding();
+	bool bIsDestroyed = false;
 	
 // Widgets
 public:

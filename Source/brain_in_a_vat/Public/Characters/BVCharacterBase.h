@@ -17,7 +17,9 @@ class UBVHealthComponent;
 class UDataTable;
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVCharacterBase : public ACharacter, public IGenericTeamAgentInterface, public IBVDamageableInterface
+class BRAIN_IN_A_VAT_API ABVCharacterBase : public ACharacter,
+											public IGenericTeamAgentInterface,
+											public IBVDamageableInterface
 {
 	GENERATED_BODY()
 
@@ -30,11 +32,12 @@ protected:
 
 // Character and Team Information
 public:
-	// Team Info
-	virtual FGenericTeamId GetGenericTeamId() const override;
+	// Team
+	virtual FGenericTeamId GetGenericTeamId() const override { return TeamId; }
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamId = NewTeamID; }
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
-	uint8 TeamFlag;
+	FGenericTeamId TeamId = FGenericTeamId(0); 
 
 	virtual FGenericTeamId GetTeamId_Implementation() const override;
 

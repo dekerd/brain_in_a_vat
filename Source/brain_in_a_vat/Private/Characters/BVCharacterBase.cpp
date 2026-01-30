@@ -12,6 +12,7 @@
 #include "Widget/BVHealthBarWidget.h"
 #include "Widget/BVUnitNameWidget.h"
 #include "BVPlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values
@@ -69,15 +70,6 @@ void ABVCharacterBase::Tick(float DeltaTime)
 	Super::Tick(DeltaTime);
 }
 
-FGenericTeamId ABVCharacterBase::GetGenericTeamId() const
-{
-	if (const IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(GetController()))
-	{
-		return TeamAgent->GetGenericTeamId();
-	}
-	return IGenericTeamAgentInterface::GetGenericTeamId();
-}
-
 FGenericTeamId ABVCharacterBase::GetTeamId_Implementation() const
 {
 	return GetGenericTeamId();
@@ -92,8 +84,31 @@ void ABVCharacterBase::SetHovered_Implementation(bool bInHovered)
 
 		if (bIsHovered)
 		{
-			const bool bIsEnemy = (TeamFlag != 1);
-			Stencil = bIsEnemy ? 2 : 1;
+
+			APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+			IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC);
+
+			if (TeamAgentPC)
+			{
+				ETeamAttitude::Type Attitude = TeamAgentPC->GetTeamAttitudeTowards((*this));
+
+				switch (Attitude)
+				{
+				case ETeamAttitude::Friendly:
+					Stencil = 1;
+					break;
+				case ETeamAttitude::Hostile:
+					Stencil = 2;
+					break;
+				case ETeamAttitude::Neutral:
+					Stencil = 3;
+					break;
+				default:
+					Stencil = 0;
+					break;
+				}
+			}
+
 		}
 		
 		CharacterMesh->SetRenderCustomDepth(bIsHovered);

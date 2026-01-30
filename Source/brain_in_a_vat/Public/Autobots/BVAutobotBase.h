@@ -6,34 +6,26 @@
 #include "GenericTeamAgentInterface.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
+#include "Characters/BVCharacterBase.h"
 #include "GAS/CombatAttributeSet.h"
-#include "GameFramework/Character.h"
-#include "Interface/BVDamageableInterface.h"
 #include "Data/UnitStats.h"
 #include "BVAutobotBase.generated.h"
-
 
 class UWidgetComponent;
 class UBVHealthComponent;
 class UDataTable;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttackFinished, AAIController*, AIController);
-// DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnHealthChangedUI, float, NewHealthRatio);
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVAutobotBase : public ACharacter, public IGenericTeamAgentInterface, public IAbilitySystemInterface, public IBVDamageableInterface
+class BRAIN_IN_A_VAT_API ABVAutobotBase : public ABVCharacterBase,
+										  public IAbilitySystemInterface
 {
 	GENERATED_BODY()
 
+// Initialization
 public:
 	ABVAutobotBase();
-
-// Unit Information
-public:
-	virtual FGenericTeamId GetGenericTeamId() const override;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data")
-	FText UnitName = FText::FromString(TEXT("Default Unit Name"));
 
 // Gameplay Ability System (GAS)
 public:
@@ -62,9 +54,6 @@ public:
 	virtual FGenericTeamId GetTeamId_Implementation() const override;
 	virtual bool IsDestroyed_Implementation() const override;
 	
-// Basic Functionalities
-
-
 // Stats
 public:
 	const FUnitStats* GetUnitStats() const;
@@ -81,7 +70,6 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> InitStatsEffect;
 
-	
 public:
 	
 	UFUNCTION()
@@ -144,23 +132,8 @@ public:
 	UPROPERTY()
 	TSubclassOf<UUserWidget> HealthBarWidgetClass;
 
-	UPROPERTY()
-	UWidgetComponent* UnitNameWidgetComponent;
-
-	UPROPERTY()
-	TSubclassOf<UUserWidget> UnitNameWidgetClass;
-
-
 protected:
 
-// Mouse-hovering effect
-public:
-	virtual void SetHovered_Implementation(bool bInHovered) override;
-	
-protected:
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	bool bIsHovered = false;
-	
 // Fade effect when destroyed
 
 	UPROPERTY()

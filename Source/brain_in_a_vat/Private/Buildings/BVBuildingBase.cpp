@@ -157,11 +157,6 @@ void ABVBuildingBase::DestroyBuilding()
 	
 }
 
-FGenericTeamId ABVBuildingBase::GetGenericTeamId() const
-{
-	return FGenericTeamId(TeamFlag);
-}
-
 UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
 {
 	return ASC;	
