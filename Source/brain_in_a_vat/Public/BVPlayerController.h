@@ -22,6 +22,8 @@ public:
 	virtual FGenericTeamId GetGenericTeamId() const override { return TeamID; }
 	virtual void SetGenericTeamId(const FGenericTeamId& InTeamID) override { TeamID = InTeamID; }
 
+	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const override;
+
 	ABVPlayerController();
 	
 protected:

@@ -6,7 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Collision/BVCollision.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
 #include "GAS/GAStags.h"

@@ -4,7 +4,7 @@
 #include "Animations/AnimNotify/BVAnimNotify_Footstep.h"
 
 #include "MainCharacter.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 
 void UBVAnimNotify_Footstep::Notify(USkeletalMeshComponent* MeshComp, UAnimSequenceBase* Animation, const FAnimNotifyEventReference& EventReference)
 {

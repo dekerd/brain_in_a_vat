@@ -3,7 +3,7 @@
 
 #include "AI/BVAIController.h"
 #include "EngineUtils.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Navigation/CrowdFollowingComponent.h"
@@ -32,7 +32,7 @@ ABVAIController::ABVAIController()
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
 
 	SightConfig->SightRadius = 1000.f;
-	SightConfig->LoseSightRadius = 2000.f;
+	SightConfig->LoseSightRadius = 1000.f;
 	SightConfig->PeripheralVisionAngleDegrees = 360.f;
 
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
@@ -86,27 +86,42 @@ void ABVAIController::OnPossess(APawn* InPawn)
 	// Generate the blackboard and the behavior tree
 	RunAI();
 
-	// Find the cube
-	TargetCube = nullptr;
+	// Find the target building
+	MoveTarget = nullptr;
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
-		if (It->ActorHasTag("MoveTarget"))
+		if (It->ActorHasTag("TargetBuilding"))
 		{
-			// UE_LOG(LogTemp, Warning, TEXT("TargetCube Found!"))
-			TargetCube = *It;
+			MoveTarget = *It;
 			break;
 		}
 	}
 
-	if (TargetCube == nullptr)
+	if (MoveTarget == nullptr)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No Target Cube found"))
 	}
 
 	// Set Blackboard Value
 	BlackboardComponent = GetBlackboardComponent();
-	BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), TargetCube->GetActorLocation());
+	if (BlackboardComponent)
+	{
+		if (IsValid(MoveTarget))
+		{
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), MoveTarget->GetActorLocation());
+		}
+		else
+		{
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), InPawn->GetActorLocation());
+		}
+	}
 	
+
+	// Set Team Information
+	if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(InPawn))
+	{
+		SetGenericTeamId(TeamAgent->GetGenericTeamId());
+	}
 }
 
 void ABVAIController::BeginPlay()
@@ -127,22 +142,8 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 	APawn* ControllingPawn = GetPawn();
 	if (!ControllingPawn) return;
 
-	// UAIPerceptionComponent* PerceptionComponent = GetPerceptionComponent();
-	// if (!PerceptionComponent) return;
-
 	TArray<AActor*> PerceivedActors;
 	AIPerception->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), PerceivedActors);
-
-	/* 
-	for (AActor* Actor : PerceivedActors)
-	{
-		if (Actor)
-		{
-			FString DebugMsg = FString::Printf(TEXT("Perceived: %s -> %s"), *ControllingPawn->GetName(), *Actor->GetName());
-			GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Cyan, DebugMsg);
-		}
-	}
-	*/
 	
 	const FGenericTeamId MyTeamId = GetGenericTeamId();
 
@@ -188,6 +189,20 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), ClosestTarget->GetActorLocation());
 		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), true);
 		UE_LOG(LogTemp, Warning, TEXT("[%s] tries to attack [%s]."), *ControllingPawn->GetName(), *ClosestTarget->GetName())
+	}
+	else
+	{
+		BlackboardComponent->SetValueAsObject(TEXT("AttackTargetActor"), nullptr);
+		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), false);
+
+		if (IsValid(MoveTarget))
+		{
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), MoveTarget->GetActorLocation());
+		}
+		else
+		{
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), ControllingPawn->GetActorLocation());
+		}
 	}
 	
 }

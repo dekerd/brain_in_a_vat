@@ -4,7 +4,7 @@
 #include "Components/BVHealthComponent.h"
 #include "GAS/CombatAttributeSet.h"
 #include "AbilitySystemComponent.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 #include "Buildings/BVBuildingBase.h"
 
 

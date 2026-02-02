@@ -46,5 +46,5 @@ private:
 	UBlackboardComponent* BlackboardComponent;
 
 	UPROPERTY()
-	TObjectPtr<AActor> TargetCube;
+	TObjectPtr<AActor> MoveTarget;
 };

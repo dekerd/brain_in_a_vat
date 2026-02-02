@@ -121,10 +121,10 @@ protected:
 public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	UWidgetComponent* HealthBarWidgetComponent;
+	UWidgetComponent* OverheadWidgetComponent;
 
 	UPROPERTY()
-	TSubclassOf<UUserWidget> HealthBarWidgetClass;
+	TSubclassOf<UUserWidget> OverheadWidgetClass;
 
 protected:
 

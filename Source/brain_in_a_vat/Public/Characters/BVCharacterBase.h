@@ -48,13 +48,15 @@ public:
 protected:
 
 // Widgets
+/*
 public:
 	UPROPERTY()
 	UWidgetComponent* UnitNameWidgetComponent;
 
 	UPROPERTY()
 	TSubclassOf<UUserWidget> UnitNameWidgetClass;
-
+*/
+	
 protected:
 
 // Mouse-hovering effect

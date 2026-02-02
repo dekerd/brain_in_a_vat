@@ -14,7 +14,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "DrawDebugHelpers.h"
 #include "Components/SphereComponent.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 #include "Weapons/Projectiles/BVLaserBeamBase.h"
 #include "Collision/BVCollision.h"
 #include "Item/BVItemData.h"

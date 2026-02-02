@@ -8,8 +8,6 @@
 ABVNPCBase::ABVNPCBase()
 {
 	PrimaryActorTick.bCanEverTick = false;
-
-	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMeshComponent"));
 	
 }
 
@@ -19,12 +17,5 @@ void ABVNPCBase::BeginPlay()
 	Super::BeginPlay();
 	
 }
-
-// Called every frame
-void ABVNPCBase::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-}
-
 
 

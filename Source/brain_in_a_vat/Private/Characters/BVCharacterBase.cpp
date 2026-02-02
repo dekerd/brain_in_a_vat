@@ -30,6 +30,7 @@ ABVCharacterBase::ABVCharacterBase()
 	
 	// <------------ Widgets ------------>
 	// UnitNameWidget
+	/*
 	UnitNameWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("UnitNameWidgetComponent"));
 	static ConstructorHelpers::FClassFinder<UBVUnitNameWidget> UnitNameWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_UnitNameWidget.WBP_UnitNameWidget_C'"));
 	if (UnitNameWidgetRef.Class != nullptr)
@@ -38,7 +39,9 @@ ABVCharacterBase::ABVCharacterBase()
 		UnitNameWidgetComponent->SetWidgetClass(UnitNameWidgetClass);
 	}
 	UnitNameWidgetComponent->SetupAttachment(RootComponent);
+	UnitNameWidgetComponent->SetRelativeLocation(FVector(0.0f, 0.0f, 50.f));
 	UnitNameWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	*/
 }
 
 void ABVCharacterBase::BeginPlay()
@@ -50,6 +53,7 @@ void ABVCharacterBase::BeginPlay()
 
 	GetMesh()->SetCollisionProfileName(TEXT("Hoverable"));
 
+	/*
 	// Widget Setting
 	if (UnitNameWidgetComponent)
 	{
@@ -63,6 +67,7 @@ void ABVCharacterBase::BeginPlay()
 			}
 		}
 	}
+	*/
 }
 
 void ABVCharacterBase::Tick(float DeltaTime)
@@ -91,6 +96,7 @@ void ABVCharacterBase::SetHovered_Implementation(bool bInHovered)
 			if (TeamAgentPC)
 			{
 				ETeamAttitude::Type Attitude = TeamAgentPC->GetTeamAttitudeTowards((*this));
+				FString AttitudeStr = StaticEnum<ETeamAttitude::Type>()->GetValueAsString(Attitude);
 
 				switch (Attitude)
 				{
@@ -107,6 +113,9 @@ void ABVCharacterBase::SetHovered_Implementation(bool bInHovered)
 					Stencil = 0;
 					break;
 				}
+
+				//FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d, Attitude : %s"), *GetName(), Stencil, *AttitudeStr);
+				//GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
 			}
 
 		}
@@ -114,8 +123,6 @@ void ABVCharacterBase::SetHovered_Implementation(bool bInHovered)
 		CharacterMesh->SetRenderCustomDepth(bIsHovered);
 		CharacterMesh->SetCustomDepthStencilValue(Stencil);
 		
-		// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
 	}
 }
 

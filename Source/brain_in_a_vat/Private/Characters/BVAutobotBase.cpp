@@ -1,7 +1,7 @@
 ﻿// Fill out your copyright notice in the Description page of Project Settings.
 
 
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 
 #include "AI/BVAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
@@ -20,6 +20,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
 #include "BVPlayerController.h"
+#include "Widget/BVUnitOverheadWidget.h"
 
 
 // Sets default values
@@ -44,6 +45,7 @@ ABVAutobotBase::ABVAutobotBase()
 	bUseControllerRotationRoll = false;
 
 	GetCharacterMovement()->bOrientRotationToMovement = true;
+	GetCharacterMovement()->bUseControllerDesiredRotation = true;
 	GetCharacterMovement()->RotationRate = FRotator(0.0f, 500.0f, 0.0f);
 	
 	GetCharacterMovement()->JumpZVelocity = 400.f;
@@ -67,18 +69,13 @@ ABVAutobotBase::ABVAutobotBase()
 
 	// <------------ Widgets ------------>
 	// HealthBar Widget
-	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidgetComponent"));
-	HealthBarWidgetComponent->SetupAttachment(RootComponent);
-	HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	HealthBarWidgetComponent->SetDrawSize(FVector2D(60.f, 5.f));
-	HealthBarWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 100.f));
+	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidgetComponent"));
+	OverheadWidgetComponent->SetupAttachment(RootComponent);
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
 
-	static ConstructorHelpers::FClassFinder<UUserWidget> HealthBarWidgetClassRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_HealthBar.WBP_HealthBar_C'"));
-	if (HealthBarWidgetClassRef.Succeeded())
-	{
-		HealthBarWidgetClass = HealthBarWidgetClassRef.Class;
-		HealthBarWidgetComponent->SetWidgetClass(HealthBarWidgetClass);
-	}
+	OverheadWidgetComponent->SetDrawSize(FVector2D(120.f, 10.f));
+	OverheadWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 90.f));
+	OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
 
 	// Gameplay Ability System (GAS)
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
@@ -134,15 +131,22 @@ void ABVAutobotBase::BeginPlay()
 	}
 
 	// Setting Widget
-	if (HealthBarWidgetComponent)
+	if (OverheadWidgetClass && OverheadWidgetComponent)
 	{
-		if (UUserWidget* Widget = HealthBarWidgetComponent->GetUserWidgetObject())
+		OverheadWidgetComponent->SetWidgetClass(OverheadWidgetClass);
+	}
+
+	if (OverheadWidgetComponent)
+	{
+		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
-			if (UBVHealthBarWidget* HealthBar = Cast<UBVHealthBarWidget>(Widget))
+			if (UBVUnitOverheadWidget* OverheadWidget = Cast<UBVUnitOverheadWidget>(UserWidget))
 			{
-				HealthBar->InitWithHealthComponent(HealthComponent);
+				OverheadWidget->SetUnitName(UnitName);
+				OverheadWidget->InitWithHealthComponent(HealthComponent);
 			}
 		}
+		
 	}
 	
 	// Setting Material
@@ -317,7 +321,10 @@ void ABVAutobotBase::Dead()
 	}
 
 	// Hide Widget
-	HealthBarWidgetComponent->SetVisibility(false);
+	if (OverheadWidgetComponent)
+	{
+		OverheadWidgetComponent->SetVisibility(false);
+	}
 	
 	// Destroy this object 
 	FTimerHandle DeadTimerHandle;

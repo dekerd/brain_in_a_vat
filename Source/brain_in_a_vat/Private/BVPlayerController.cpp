@@ -2,7 +2,7 @@
 
 
 #include "BVPlayerController.h"
-#include "Autobots/BVAutobotBase.h"
+#include "Characters/BVAutobotBase.h"
 #include "Collision/BVCollision.h"
 #include "InputMappingContext.h"
 #include "EnhancedInputComponent.h"
@@ -13,6 +13,23 @@
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
+
+ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
+{
+	const IGenericTeamAgentInterface* OtherTeamAgent = Cast<IGenericTeamAgentInterface>(&Other);
+	if (!OtherTeamAgent) return ETeamAttitude::Neutral;
+
+	FGenericTeamId MyTeamId = GetGenericTeamId();
+	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
+
+	if (OtherTeamId.GetId() == 255)
+	{
+		return ETeamAttitude::Neutral;
+	}
+
+	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
+	
+}
 
 ABVPlayerController::ABVPlayerController()
 {
