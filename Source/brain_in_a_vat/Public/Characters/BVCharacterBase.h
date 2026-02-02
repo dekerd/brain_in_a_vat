@@ -10,6 +10,7 @@
 #include "GAS/CombatAttributeSet.h"
 #include "Interface/BVDamageableInterface.h"
 #include "Data/UnitStats.h"
+#include "Headers/BVTeam.h"
 #include "BVCharacterBase.generated.h"
 
 class UWidgetComponent;
@@ -30,18 +31,18 @@ protected:
 	virtual void BeginPlay() override;
 	virtual void Tick(float DeltaTime) override;
 
-// Character and Team Information
+// Team Setting
 public:
-	// Team
-	virtual FGenericTeamId GetGenericTeamId() const override { return TeamId; }
-	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamId = NewTeamID; }
-
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
-	FGenericTeamId TeamId = FGenericTeamId(0); 
-
+	EBVTeam TeamType = EBVTeam::Neutral;
+	
+	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamType = (EBVTeam)NewTeamID.GetId(); }
+	
 	virtual FGenericTeamId GetTeamId_Implementation() const override;
 
-	// Name
+// Name
+public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Data")
 	FText UnitName = FText::FromString(TEXT("Default Unit Name"));
 protected:

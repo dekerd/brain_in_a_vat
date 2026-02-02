@@ -7,6 +7,7 @@
 #include "BehaviorTree/BehaviorTree.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Navigation/CrowdFollowingComponent.h"
+#include "Headers/BVTeam.h"
 
 
 // Sets default values
@@ -61,6 +62,22 @@ void ABVAIController::StopAI()
 		BTComponent->StopTree();
 	}
 	
+}
+
+ETeamAttitude::Type ABVAIController::GetTeamAttitudeTowards(const AActor& Other) const
+{
+	const IGenericTeamAgentInterface* OtherTeamAgent = Cast<IGenericTeamAgentInterface>(&Other);
+	if (!OtherTeamAgent) return ETeamAttitude::Neutral;
+
+	FGenericTeamId MyTeamId = GetGenericTeamId();
+	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
+
+	if (MyTeamId == FGenericTeamId::NoTeam || OtherTeamId == FGenericTeamId::NoTeam)
+	{
+		return ETeamAttitude::Neutral;
+	}
+
+	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
 }
 
 void ABVAIController::OnPossess(APawn* InPawn)

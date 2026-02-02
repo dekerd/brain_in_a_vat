@@ -124,15 +124,6 @@ void AMainCharacter::Tick(float DeltaTime)
 
 }
 
-FGenericTeamId AMainCharacter::GetGenericTeamId() const
-{
-	if (const IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(GetController()))
-	{
-		return TeamAgent->GetGenericTeamId();
-	}
-	return IGenericTeamAgentInterface::GetGenericTeamId();
-}
-
 bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 {
 	if (ItemData)
@@ -154,19 +145,20 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
                                                UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-
-	UE_LOG(LogTemp, Warning, TEXT("Target actor adding start : [%s]"), *OtherActor->GetName());
-	if (!OtherActor) return;
-	if (!OtherActor->Implements<UBVDamageableInterface>()) return;
-
-	const uint8 OtherActorTeamId = IBVDamageableInterface::Execute_GetTeamId(OtherActor);
-	if (OtherActorTeamId == TeamFlag) return;
 	
-	if (IBVDamageableInterface::Execute_IsDestroyed(OtherActor) == true) return;
+	if (!OtherActor || OtherActor == this) return;
 
-	EnemiesInRange.AddUnique(OtherActor);
+	const IGenericTeamAgentInterface* TargetTeamAgent = Cast<IGenericTeamAgentInterface>(OtherActor);
+	if (!TargetTeamAgent) return;
 
-	UE_LOG(LogTemp, Warning, TEXT("Target actor added : [%s]"), *OtherActor->GetName());
+	FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
+	FGenericTeamId MyTeamId = GetGenericTeamId();
+
+	if (OtherTeamId != FGenericTeamId::NoTeam && OtherTeamId != MyTeamId)
+	{
+		EnemiesInRange.AddUnique(OtherActor);
+	}
+
 }
 
 void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -350,7 +342,7 @@ class AActor* AMainCharacter::FindNearestEnemyInRange() const
 	{
 		AActor* TargetActor = WeakActor.Get();
 		if (!IsValid(TargetActor)) continue;
-		if (IBVDamageableInterface::Execute_GetTeamId(TargetActor) == TeamFlag) continue;
+		if (IBVDamageableInterface::Execute_GetTeamId(TargetActor) == GetGenericTeamId()) continue;
 		if (IBVDamageableInterface::Execute_IsDestroyed(TargetActor)) continue;
 
 		const float DistSq = FVector::DistSquared(MyLocation, TargetActor->GetActorLocation());

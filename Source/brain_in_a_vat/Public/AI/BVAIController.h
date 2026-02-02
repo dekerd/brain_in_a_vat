@@ -20,6 +20,8 @@ public:
 	void RunAI();
 	void StopAI();
 
+	virtual ETeamAttitude::Type GetTeamAttitudeTowards(const AActor& Other) const override;
+
 protected:
 	virtual void OnPossess(APawn* InPawn) override;
 	virtual void BeginPlay() override;

@@ -116,10 +116,6 @@ void ABVAutobotBase::BeginPlay()
 
 	// Setting Team Information
 	AAIController* AIController = Cast<AAIController>(GetController());
-	if (AIController)
-	{
-		AIController->SetGenericTeamId(FGenericTeamId(TeamFlag));
-	}
 
 	// [GAS] Initialize ASC
 	if (ASC && CombatAttributes)
@@ -335,10 +331,11 @@ void ABVAutobotBase::Dead()
 	}
 
 	// If Enemy, pay the rewards
-	if (TeamFlag == 2)
+	ABVPlayerController* PC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController());
+
+	if (PC)
 	{
-		ABVPlayerController* PC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController());
-		if (PC)
+		if (PC->GetTeamAttitudeTowards(*this) == ETeamAttitude::Hostile)
 		{
 			ABVPlayerState* PS = PC->GetPlayerState<ABVPlayerState>();
 			const FUnitStats* Stats = GetUnitStats();

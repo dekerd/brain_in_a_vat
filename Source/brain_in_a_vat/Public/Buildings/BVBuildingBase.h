@@ -9,6 +9,7 @@
 #include "GenericTeamAgentInterface.h"
 #include "Interface/BVDamageableInterface.h"
 #include "Data/UnitStats.h"
+#include "Headers/BVTeam.h"
 #include "BVBuildingBase.generated.h"
 
 UCLASS()
@@ -27,13 +28,11 @@ public:
 
 // Team Setting
 public:
-	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamID = NewTeamID; }
-	virtual FGenericTeamId GetGenericTeamId() const override { return TeamID; }
-
-	UPROPERTY(EditAnywhere, Category = "Team")
-	FGenericTeamId TeamID = FGenericTeamId(0);
-
-	uint32 GetTeamFlag() const { return TeamFlag; }
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
+	EBVTeam TeamType = EBVTeam::Neutral;
+	
+	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamType = (EBVTeam)NewTeamID.GetId(); }
 
 // Capsule Offset
 
@@ -74,9 +73,6 @@ protected:
 
 // Stats
 public:
-	UPROPERTY(EditAnywhere, Category = "Data")
-	uint8 TeamFlag;
-
 	const FUnitStats* GetStats() const;
 	void ApplyInitStatFromDataTable();
 

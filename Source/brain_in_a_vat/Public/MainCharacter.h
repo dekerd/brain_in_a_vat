@@ -5,6 +5,7 @@
 #include "CoreMinimal.h"
 #include "GenericTeamAgentInterface.h"
 #include "GameFramework/Character.h"
+#include "Headers/BVTeam.h"
 #include "MainCharacter.generated.h"
 
 class UBVItemData;
@@ -36,12 +37,11 @@ protected:
 
 // Team Setting
 public:
-	uint32 GetTeamFlag() const { return TeamFlag; }
-protected:
-	UPROPERTY()
-	uint32 TeamFlag = 1;
-
-	virtual FGenericTeamId GetGenericTeamId() const override;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
+	EBVTeam TeamType = EBVTeam::Player;
+	
+	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
+	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamType = (EBVTeam)NewTeamID.GetId(); }
 	
 // Inventory and Weapons
 	

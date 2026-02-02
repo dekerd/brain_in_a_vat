@@ -87,17 +87,20 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 	
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 	if (!OtherActor->Implements<UBVDamageableInterface>()) return;
-	
 	if (IBVDamageableInterface::Execute_IsDestroyed(OtherActor)) return;
 
-	if (const AMainCharacter* MainPlayer = Cast<AMainCharacter>(GetOwner()))
+	FGenericTeamId MyTeamId = FGenericTeamId::NoTeam;
+	if (IGenericTeamAgentInterface* OwnerAgent = Cast<IGenericTeamAgentInterface>(GetInstigator()))
 	{
-		if (IBVDamageableInterface::Execute_GetTeamId(OtherActor) == MainPlayer->GetTeamFlag())
-		{
-			return;
-		}
+		MyTeamId = OwnerAgent->GetGenericTeamId();
 	}
 
+	const IGenericTeamAgentInterface* TargetAgent = Cast<IGenericTeamAgentInterface>(OtherActor);
+	if (!TargetAgent) return;
+
+	FGenericTeamId TargetTeamId = TargetAgent->GetGenericTeamId();
+	if (TargetTeamId == MyTeamId) return;
+	
 	if (!DamageEffect) return;
 
 	IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(OtherActor);

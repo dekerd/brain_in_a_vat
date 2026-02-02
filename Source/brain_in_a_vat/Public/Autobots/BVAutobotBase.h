@@ -95,10 +95,7 @@ public:
 	UPROPERTY(BlueprintAssignable, Category = "UI")
 	FOnHealthChangedUI OnHealthChangedUI;
 	*/
-	
-// Interface
-	uint32 GetTeamFlag() const { return TeamFlag; }
-	
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -106,9 +103,6 @@ protected:
 
 // Properties
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
-	uint8 TeamFlag;
-	
 	UPROPERTY()
 	bool bHasTarget = false;
 

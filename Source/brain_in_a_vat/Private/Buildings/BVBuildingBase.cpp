@@ -15,6 +15,7 @@
 #include "Perception/AISense_Sight.h"
 #include "Collision/BVCollision.h"
 #include "Data/UnitStats.h"
+#include "Kismet/GameplayStatics.h"
 #include "Widget/BVNameWidget.h"
 
 // Sets default values
@@ -327,7 +328,6 @@ void ABVBuildingBase::SpawnUnit()
 
 void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 {
-
 	bIsHovered = bInHovered;
 	if (StaticMeshComponent)
 	{
@@ -335,13 +335,36 @@ void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 
 		if (bIsHovered)
 		{
-			const bool bIsEnemy = (TeamFlag != 1);
-			Stencil = bIsEnemy ? 2 : 1;
-		}
 
+			APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
+			IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC);
+
+			if (TeamAgentPC)
+			{
+				ETeamAttitude::Type Attitude = TeamAgentPC->GetTeamAttitudeTowards((*this));
+
+				switch (Attitude)
+				{
+				case ETeamAttitude::Friendly:
+					Stencil = 1;
+					break;
+				case ETeamAttitude::Hostile:
+					Stencil = 2;
+					break;
+				case ETeamAttitude::Neutral:
+					Stencil = 3;
+					break;
+				default:
+					Stencil = 0;
+					break;
+				}
+			}
+
+		}
+		
 		StaticMeshComponent->SetRenderCustomDepth(bIsHovered);
 		StaticMeshComponent->SetCustomDepthStencilValue(Stencil);
-
+		
 		// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
 		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
 	}
