@@ -9,6 +9,7 @@
 #include "EnhancedInputSubsystems.h"
 #include "MainCharacter.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
+#include "Buildings/BVBuildingBase.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
@@ -154,17 +155,22 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 				IBVDamageableInterface::Execute_SetHovered(HoveredObject, false);
 			}
 		}
+
+		if (NewHitActor)
+		{
+			if (NewHitActor->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(NewHitActor, true);
+
+				if (HoverSound)
+				{
+					UGameplayStatics::PlaySound2D(this, HoverSound, HoverSoundVolume);
+				}
+			}
+		}
 	}
 
 	HoveredObject = NewHitActor;
-
-	if (HoveredObject)
-	{
-		if (HoveredObject->Implements<UBVDamageableInterface>())
-		{
-			IBVDamageableInterface::Execute_SetHovered(HoveredObject, true);
-		}
-	}
 }
 
 void ABVPlayerController::SetupInputComponent()
@@ -187,13 +193,24 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 	if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 	{
 		const FVector DestLocation = Hit.ImpactPoint;
+		if (CurrentBuildingClass)
+		{
+			AMainCharacter* MyCharacter = Cast<AMainCharacter>(GetPawn());
+			if (MyCharacter)
+			{
+				MyCharacter->ConstructBuilding(DestLocation, CurrentBuildingClass);
+
+				CurrentBuildingClass = nullptr;
+				return;
+			}
+		}
 
 		if (APawn* ControlledPawn = GetPawn())
 		{
 			DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
 			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, DestLocation);
 
-			/*
+			/* Move Sound
 			if (AMainCharacter* MainCharacter = Cast<AMainCharacter>(ControlledPawn))
 			{
 				MainCharacter->PlayRandomMoveSound();
@@ -218,6 +235,11 @@ void ABVPlayerController::SelectObject()
 			UE_LOG(LogTemp, Log, TEXT("Selected: %s"), *SelectedActor->GetName())
 		}
 	}
+}
+
+void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass)
+{
+	CurrentBuildingClass = InBuildingClass;
 }
 
 void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)

@@ -8,6 +8,7 @@
 #include "Headers/BVTeam.h"
 #include "MainCharacter.generated.h"
 
+class ABVBuildingBase;
 class UBVItemData;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
@@ -107,6 +108,11 @@ protected:
 	void FireWeapons(float DeltaSecond, int32 WeaponIndex);
 
 	void FireDefaultMissile(UBVItemData* ItemData, AActor* Target);
+
+// Construct Buildings
+public:
+	UFUNCTION(BlueprintCallable, Category = "Building")
+	void ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass);
 
 // Sound Effects
 public:

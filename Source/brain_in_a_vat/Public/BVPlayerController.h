@@ -53,14 +53,31 @@ protected:
 
 	void MoveToLocation(const FInputActionValue& Value);
 	void SelectObject();
+
+	// Player Team setting
+private:
+	FGenericTeamId TeamID = FGenericTeamId(1);
+
+
+// Construction Mode
+public:
+	UFUNCTION(BlueprintCallable, Category = "Build")
+	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass);
+
+protected:
+	UPROPERTY()
+	TSubclassOf<ABVBuildingBase> CurrentBuildingClass;
 	
 // Mouse Hovering
 protected:
 	UPROPERTY()
 	TObjectPtr<class AActor> HoveredObject;
-	
-private:
-	FGenericTeamId TeamID = FGenericTeamId(1);
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	TObjectPtr<class USoundBase> HoverSound;
+
+	UPROPERTY(EditAnywhere, Category = "Audio")
+	float HoverSoundVolume = 0.5f;
 
 // <--------------- Widgets --------------->
 // Main HUD Widget
@@ -70,29 +87,6 @@ public:
 	
 	UPROPERTY()
 	TObjectPtr<class UUserWidget> MainHUDWidget;
-
-/*
-protected:
-// Inventory Widget
-public:
-
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<class UBVInventoryWidget> InventoryWidgetClass;
-
-	UPROPERTY()
-	TObjectPtr<class UBVInventoryWidget> InventoryWidget;
-
-// Resource Widget
-public:
-	
-protected:
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<class UUserWidget> ResourceHUDClass;
-	
-	UPROPERTY()	
-	TObjectPtr<class UUserWidget> ResourceHUD;
-*/
 	
 // Gold Popup Widget
 public:

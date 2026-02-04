@@ -91,6 +91,18 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> InitStatsEffect;
+
+// Building Cost
+
+public:
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
+	int32 BuildCost = 100;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
+	float BuildTime = 10.f;
+
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
+	UTexture2D* BuildingIcon;
 	
 // Gameplay Ability System (GAS)
 public:
@@ -130,30 +142,6 @@ public:
 
 	UPROPERTY()
 	TObjectPtr<UUBVBuildingOverheadWidget> OverheadWidget;
-	
-	/*
-	UPROPERTY(VisibleAnywhere)
-	TObjectPtr<class UWidgetComponent> RespawnWidgetComponent;
-
-	UPROPERTY()
-	TSubclassOf<UUserWidget> RespawnWidgetClass;
-
-	UPROPERTY()
-	TObjectPtr<class UBVSpawnCooltimeBar> RespawnWidget;
-	
-	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
-	UWidgetComponent* HealthBarWidgetComponent;
-
-	UPROPERTY()
-	TSubclassOf<UUserWidget> HealthBarWidgetClass;
-
-	UPROPERTY()
-	UWidgetComponent* NameWidgetComponent;
-
-	UPROPERTY()
-	TSubclassOf<UUserWidget> NameWidgetClass;
-	*/
-	
 
 // Mouse-hovering effect
 public:
