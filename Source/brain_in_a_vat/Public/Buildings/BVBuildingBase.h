@@ -12,6 +12,9 @@
 #include "Headers/BVTeam.h"
 #include "BVBuildingBase.generated.h"
 
+class UWidgetComponent;
+class UUBVBuildingOverheadWidget;
+
 UCLASS()
 class BRAIN_IN_A_VAT_API ABVBuildingBase :  public AActor,
 											public IGenericTeamAgentInterface,
@@ -118,6 +121,17 @@ public:
 	
 // Widgets
 public:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UWidgetComponent> OverheadWidgetComponent;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<UUserWidget> OverheadWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<UUBVBuildingOverheadWidget> OverheadWidget;
+	
+	/*
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UWidgetComponent> RespawnWidgetComponent;
 
@@ -138,6 +152,7 @@ public:
 
 	UPROPERTY()
 	TSubclassOf<UUserWidget> NameWidgetClass;
+	*/
 	
 
 // Mouse-hovering effect

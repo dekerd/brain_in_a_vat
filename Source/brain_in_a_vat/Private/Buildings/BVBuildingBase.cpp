@@ -17,6 +17,7 @@
 #include "Data/UnitStats.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVNameWidget.h"
+#include "Widget/UBVBuildingOverheadWidget.h"
 
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
@@ -72,44 +73,10 @@ ABVBuildingBase::ABVBuildingBase()
 
 	// <--------------- Widgets ----------------> //
 	
-	// HealthBar Widget
-	HealthBarWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("HealthBarWidget"));
-
-	static ConstructorHelpers::FClassFinder<UBVHealthBarWidget> HealthBarWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_HealthBar.WBP_HealthBar_C'"));
-	if (HealthBarWidgetRef.Succeeded())
-	{
-		HealthBarWidgetClass = HealthBarWidgetRef.Class;
-		HealthBarWidgetComponent->SetWidgetClass(HealthBarWidgetClass);
-	}
-	
-	HealthBarWidgetComponent->SetupAttachment(RootComponent);
-	HealthBarWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	
-	// Respawn Cooltime Widget
-	RespawnWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("RespawnWidget"));
-
-	static ConstructorHelpers::FClassFinder<UBVSpawnCooltimeBar> SpawnWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_SpawnCooltimeBar.WBP_SpawnCooltimeBar_C'"));
-	if (SpawnWidgetRef.Class != nullptr)
-	{
-		RespawnWidgetClass = SpawnWidgetRef.Class;
-		RespawnWidgetComponent->SetWidgetClass(RespawnWidgetClass);
-	}
-	
-	RespawnWidgetComponent->SetupAttachment(RootComponent);
-	RespawnWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-
-	// Name Widget
-	NameWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("NameWidget"));
-
-	static ConstructorHelpers::FClassFinder<UBVNameWidget> NameWidgetRef(TEXT("/Script/UMGEditor.WidgetBlueprint'/Game/HUD/Widget/WBP_NameWidget.WBP_NameWidget_C'"));
-	if (NameWidgetRef.Class != nullptr)
-	{
-		NameWidgetClass = NameWidgetRef.Class;
-		NameWidgetComponent->SetWidgetClass(NameWidgetClass);
-	}
-	
-	NameWidgetComponent->SetupAttachment(RootComponent);
-	NameWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidget"));
+	OverheadWidgetComponent->SetupAttachment(RootComponent);
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	OverheadWidgetComponent->SetDrawSize(FVector2D(250.f, 50.f));
 	
 }
 
@@ -123,13 +90,12 @@ void ABVBuildingBase::Tick(float DeltaTime)
 	if (RespawnInterval <= 0.f) return;
 
 	ElapsedTime += DeltaTime;
+	
+	float Percent = FMath::Fmod(ElapsedTime, RespawnInterval) / RespawnInterval;
 
-	float CycleTime = FMath::Fmod(ElapsedTime, RespawnInterval);
-	float Percent = CycleTime / RespawnInterval;
-
-	if (RespawnWidget)
+	if (OverheadWidget)
 	{
-		RespawnWidget->SetProgress(Percent);
+		OverheadWidget->SetRespawnProgress(Percent);
 	}
 }
 
@@ -148,10 +114,8 @@ void ABVBuildingBase::DestroyBuilding()
 	ElapsedTime = 0.0f;
 
 	// Hide Widget
-	if (RespawnWidgetComponent)
-		RespawnWidgetComponent->SetVisibility(false);
-	if (HealthBarWidgetComponent)
-		HealthBarWidgetComponent->SetVisibility(false);
+	if (OverheadWidgetComponent)
+		OverheadWidgetComponent->SetVisibility(false);
 
 	// Destroy
 	SetLifeSpan(1.0f);
@@ -194,12 +158,6 @@ void ABVBuildingBase::BeginPlay()
 	const FBoxSphereBounds Bounds = StaticMeshComponent->CalcBounds(StaticMeshComponent->GetComponentTransform());
 	const float TopZ = Bounds.Origin.Z + Bounds.BoxExtent.Z;
 
-	RespawnWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 50.f));
-	RespawnWidgetComponent->SetDrawSize(FVector2D(200.f, 10.f));
-	
-	HealthBarWidgetComponent->SetWorldLocation(FVector(Bounds.Origin.X, Bounds.Origin.Y, TopZ + 70.f));
-	HealthBarWidgetComponent->SetDrawSize(FVector2D(200.f, 10.f));
-
 	// [GAS] Initialize ASC
 
 	if (ASC && CombatAttributes)
@@ -219,23 +177,20 @@ void ABVBuildingBase::BeginPlay()
 	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
 	StimuliSourceComponent->RegisterWithPerceptionSystem();
 
-	// Health Bar Widget
-	if (HealthBarWidgetComponent)
+	// Building Overhead Widget
+	if (OverheadWidgetComponent)
 	{
-		if (UUserWidget* Widget = HealthBarWidgetComponent->GetUserWidgetObject())
+		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
-			if (UBVHealthBarWidget* HealthBar = Cast<UBVHealthBarWidget>(Widget))
+			OverheadWidget = Cast<UUBVBuildingOverheadWidget>(UserWidget);
+			if (OverheadWidget)
 			{
-				HealthBar->InitWithHealthComponent(HealthComponent);
+				OverheadWidget->SetBuildingName(BuildingName);
+				OverheadWidget->InitWithHealthComponent(HealthComponent);
 			}
 		}
 	}
-	
-	// Respawn Cooltime Widget
-	if (UUserWidget* UserWidget = RespawnWidgetComponent->GetUserWidgetObject())
-	{
-		RespawnWidget = Cast<UBVSpawnCooltimeBar>(UserWidget);
-	}
+
 
 	ElapsedTime = 0.0f;
 
@@ -249,20 +204,6 @@ void ABVBuildingBase::BeginPlay()
 			true,
 			RespawnInterval
 			);
-	}
-
-	// Name Widget
-	if (NameWidgetComponent)
-	{
-		UUserWidget* WidgetObject = NameWidgetComponent->GetUserWidgetObject();
-		if (WidgetObject)
-		{
-			UBVNameWidget* NameWidget = Cast<UBVNameWidget>(WidgetObject);
-			if (NameWidget)
-			{
-				NameWidget->SetBuildingName(BuildingName);
-			}
-		}
 	}
 	
 }

@@ -32,6 +32,7 @@ ABVAutobotBase::ABVAutobotBase()
 
 	// Capsule
 	GetCapsuleComponent()->InitCapsuleSize(30.f, 42.0f);
+	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Item, ECR_Ignore);
 
 	// Mesh and Collision
 	float CapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
