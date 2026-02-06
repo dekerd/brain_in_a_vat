@@ -264,6 +264,7 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 
 void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass)
 {
+	
 	if (!BuildingClass) return;
 
 	UWorld* World = GetWorld();
@@ -283,8 +284,13 @@ void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBu
 	FActorSpawnParameters SpawnParams;
 	SpawnParams.Owner = this;
 	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	FRotator SpawnRotation = FRotator::ZeroRotator;
 
-	ABVBuildingBase* NewBuilding = World->SpawnActor<ABVBuildingBase>(BuildingClass);
+	ABVBuildingBase* NewBuilding = World->SpawnActor<ABVBuildingBase>(
+		BuildingClass,
+		SpawnLocation,
+		SpawnRotation,
+		SpawnParams);
 	
 }
 

@@ -8,6 +8,8 @@
 #include "GameFramework/PlayerController.h"
 #include "BVPlayerController.generated.h"
 
+class ABVBuildingGhost;
+class ABVBuildingBase;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSelectionChanged, AActor*, NewSelectedActor);
 
 /**
@@ -44,6 +46,9 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<class UInputAction> SelectAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UInputAction> BuildAction;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Selection")
 	TObjectPtr<AActor> SelectedActor;
@@ -53,6 +58,7 @@ protected:
 
 	void MoveToLocation(const FInputActionValue& Value);
 	void SelectObject();
+	
 
 	// Player Team setting
 private:
@@ -64,9 +70,32 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Build")
 	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass);
 
+	void OnBuildKeyPressed();
+
+	void OnBuildClick();
+
 protected:
 	UPROPERTY()
 	TSubclassOf<ABVBuildingBase> CurrentBuildingClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build")
+	TSubclassOf<class ABVBuildingBase> DefaultBuildingClass;
+
+	UPROPERTY(EditAnywhere, Category = "Build")
+	TSubclassOf<ABVBuildingGhost> GhostActorClass;
+
+	UPROPERTY(EditAnywhere, Category = "Build")
+	TObjectPtr<UMaterialInterface> GhostMaterialBase;
+
+	UPROPERTY()
+	TObjectPtr<ABVBuildingGhost> CurrentGhostActor;
+
+	bool bIsConstructionMode = false;
+	bool bCanBuild = false;
+
+	void EnterConstructionMode();
+	void ExitConstructionMode();
+	void UpdateGhostLocation();
 	
 // Mouse Hovering
 protected:

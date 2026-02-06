@@ -10,27 +10,11 @@
 #include "MainCharacter.h"
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Buildings/BVBuildingBase.h"
+#include "Buildings/BVBuildingGhost.h"
 #include "Components/AudioComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
-
-ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
-{
-	const IGenericTeamAgentInterface* OtherTeamAgent = Cast<IGenericTeamAgentInterface>(&Other);
-	if (!OtherTeamAgent) return ETeamAttitude::Neutral;
-
-	FGenericTeamId MyTeamId = GetGenericTeamId();
-	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
-
-	if (OtherTeamId.GetId() == 255)
-	{
-		return ETeamAttitude::Neutral;
-	}
-
-	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
-	
-}
 
 ABVPlayerController::ABVPlayerController()
 {
@@ -57,6 +41,12 @@ ABVPlayerController::ABVPlayerController()
 	if (SelectActionRef.Succeeded())
 	{
 		SelectAction = SelectActionRef.Object;
+	}
+
+	static ConstructorHelpers::FObjectFinder<UInputAction> BuildActionRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_Build.IA_Build'"));
+	if (BuildActionRef.Succeeded())
+	{
+		BuildAction = BuildActionRef.Object;
 	}
 
 }
@@ -142,6 +132,13 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
+	// Construction Ghost
+	if (bIsConstructionMode)
+	{
+		UpdateGhostLocation();
+	}
+
+	// Mouse Hovering
 	FHitResult Hit;
 	bool bHit = GetHitResultUnderCursor(ECC_MouseHover, false, Hit);
 	AActor* NewHitActor = bHit ? Hit.GetActor() : nullptr;
@@ -173,6 +170,23 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	HoveredObject = NewHitActor;
 }
 
+ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
+{
+	const IGenericTeamAgentInterface* OtherTeamAgent = Cast<IGenericTeamAgentInterface>(&Other);
+	if (!OtherTeamAgent) return ETeamAttitude::Neutral;
+
+	FGenericTeamId MyTeamId = GetGenericTeamId();
+	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
+
+	if (OtherTeamId.GetId() == 255)
+	{
+		return ETeamAttitude::Neutral;
+	}
+
+	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
+	
+}
+
 void ABVPlayerController::SetupInputComponent()
 {
 	Super::SetupInputComponent();
@@ -182,7 +196,9 @@ void ABVPlayerController::SetupInputComponent()
 			// Right Click -> Move
 			EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Started, this, &ABVPlayerController::MoveToLocation);
 			// Left Click -> Select
-			EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::SelectObject);
+			EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildClick);
+			// B -> Build
+			EnhancedInputComponent->BindAction(BuildAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildKeyPressed);
 		}
 	
 }
@@ -240,6 +256,115 @@ void ABVPlayerController::SelectObject()
 void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass)
 {
 	CurrentBuildingClass = InBuildingClass;
+}
+
+void ABVPlayerController::OnBuildKeyPressed()
+{
+	FString DebugMsg = FString::Printf(TEXT("B key is pressed!!"));
+	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, DebugMsg);
+
+	if (bIsConstructionMode)
+	{
+		ExitConstructionMode();
+	}
+	else
+	{
+		EnterConstructionMode();
+	}
+
+	/*
+	AMainCharacter* MyCharacter = Cast<AMainCharacter>(GetPawn());
+	if (!MyCharacter) return;
+	if (!DefaultBuildingClass) return;
+
+	FVector BuildLocation = MyCharacter->GetActorLocation();
+	MyCharacter->ConstructBuilding(BuildLocation, DefaultBuildingClass);
+	*/
+	
+}
+
+void ABVPlayerController::OnBuildClick()
+{
+	if (bIsConstructionMode)
+	{
+		if (bCanBuild && CurrentGhostActor)
+		{
+			AMainCharacter* MainCharacter = Cast<AMainCharacter>(GetPawn());
+			if (MainCharacter && DefaultBuildingClass)
+			{
+				MainCharacter->ConstructBuilding(CurrentGhostActor->GetActorLocation(), DefaultBuildingClass);
+				ExitConstructionMode();
+			}
+		}
+		else
+		{
+			// TODO : Can't Build there
+		}
+	}
+	else
+	{
+		SelectObject();
+	}
+	
+}
+
+void ABVPlayerController::EnterConstructionMode()
+{
+	if (!DefaultBuildingClass || !GhostActorClass) return;
+
+	bIsConstructionMode = true;
+
+	// 1. First, spawn a building actor 
+	if (UWorld* World = GetWorld())
+	{
+		FActorSpawnParameters Params;
+		Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+		CurrentGhostActor = World->SpawnActor<ABVBuildingGhost>(GhostActorClass, FVector::ZeroVector, FRotator::ZeroRotator, Params);
+
+		if (CurrentGhostActor)
+		{
+			// 2. Add Ghost material to the spawned building
+			ABVBuildingBase* BuildingCDO = DefaultBuildingClass->GetDefaultObject<ABVBuildingBase>();
+			if (BuildingCDO)
+			{
+				UStaticMeshComponent* BuildingMeshComp = BuildingCDO->FindComponentByClass<UStaticMeshComponent>();
+				if (BuildingMeshComp)
+				{
+					CurrentGhostActor->InitGhost(BuildingMeshComp->GetStaticMesh(), GhostMaterialBase);
+				}
+			}
+		}
+	}
+	
+}
+
+void ABVPlayerController::ExitConstructionMode()
+{
+	bIsConstructionMode = false;
+	if (CurrentGhostActor)
+	{
+		CurrentGhostActor->Destroy();
+		CurrentGhostActor = nullptr;
+	}
+}
+
+void ABVPlayerController::UpdateGhostLocation()
+{
+	if (!CurrentGhostActor) return;
+
+	FHitResult Hit;
+	bool bHit = GetHitResultUnderCursor(ECC_Visibility, false, Hit);
+
+	if (bHit)
+	{
+		FVector TargetLoc = Hit.ImpactPoint;
+		CurrentGhostActor->SetActorLocation(TargetLoc);
+
+		// TODO : Construction validation
+		
+		bCanBuild = true;
+		CurrentGhostActor->SetValid(bCanBuild);
+	}
 }
 
 void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
