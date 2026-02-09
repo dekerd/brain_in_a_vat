@@ -8,16 +8,16 @@
 #include "Components/BVHealthComponent.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
-#include "Widget/BVNameWidget.h"
 #include "DrawDebugHelpers.h"
-#include "Widget/BVHealthBarWidget.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Perception/AISense_Sight.h"
 #include "Collision/BVCollision.h"
+#include "Components/SphereComponent.h"
 #include "Data/UnitStats.h"
 #include "Kismet/GameplayStatics.h"
-#include "Widget/BVNameWidget.h"
 #include "Widget/UBVBuildingOverheadWidget.h"
+#include "GAS/GASTags.h"
+#include "Weapons/Projectiles/BVLaserBeamBase.h"
 
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
@@ -26,8 +26,11 @@ ABVBuildingBase::ABVBuildingBase()
 
 	// <--------------- Components ----------------> //
 	// Root Component
+	SceneRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
+	RootComponent = SceneRootComponent;
+	
 	BoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
-	RootComponent = BoxComponent;
+	BoxComponent->SetupAttachment(RootComponent);
 	BoxComponent->InitBoxExtent(FVector(30.f, 30.f, 30.f));
 	BoxComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	BoxComponent->SetGenerateOverlapEvents(true);
@@ -56,6 +59,10 @@ ABVBuildingBase::ABVBuildingBase()
 
 	// Health Component
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
+
+	
+
+	
 
 	// <--------------- Assets ----------------> //
 	// Unit Stats
@@ -176,10 +183,11 @@ void ABVBuildingBase::BeginPlay()
 	// Add StimuliSource
 	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
 	StimuliSourceComponent->RegisterWithPerceptionSystem();
-
+	
 	// Building Overhead Widget
 	if (OverheadWidgetComponent)
 	{
+
 		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
 			OverheadWidget = Cast<UUBVBuildingOverheadWidget>(UserWidget);
@@ -231,7 +239,8 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 
 	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), Stats->MaxHealth);
 	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), Stats->MaxHealth);
-
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), Stats->Damage);
+	
 	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());
 	
 }
@@ -246,14 +255,22 @@ void ABVBuildingBase::SpawnUnit()
 	if (!World) return;
 
 	// Choosing spawn location
-	FVector SpawnLocation = GetActorLocation() + GetActorForwardVector()*200.f;
+	float SpawnDistance = 200.f;
+
+	if (BoxComponent)
+	{
+		float BoxRadius = BoxComponent->GetScaledBoxExtent().X;
+		SpawnDistance = BoxRadius + 100.f;
+	}
+
+	FVector SpawnLocation = GetActorLocation() + (GetActorForwardVector() * SpawnDistance);
+	SpawnLocation.Z += 50.0f;
 	const FRotator SpawnRotation = FRotator::ZeroRotator;
-	
-	DrawDebugSphere(GetWorld(), SpawnLocation, 25.0f, 12, FColor::Blue, false, 1.0f);
 
 	FActorSpawnParameters Params;
 	Params.Owner = this;
-
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+	
 	ABVAutobotBase* NewSpawnUnit = World->SpawnActor<ABVAutobotBase>(
 		SpawnUnitClass,
 		SpawnLocation,

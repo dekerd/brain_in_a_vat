@@ -12,6 +12,7 @@
 #include "Headers/BVTeam.h"
 #include "BVBuildingBase.generated.h"
 
+class USphereComponent;
 class UWidgetComponent;
 class UUBVBuildingOverheadWidget;
 
@@ -62,6 +63,10 @@ protected:
 	virtual void BeginPlay() override;
 	
 // Building Components
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class USceneComponent> SceneRootComponent;
+	
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UBoxComponent> BoxComponent;
 
@@ -128,6 +133,7 @@ public:
 	FTimerHandle SpawnTimerHandle;
 
 // Destruction
+public:
 	virtual void DestroyBuilding();
 	bool bIsDestroyed = false;
 	
@@ -136,9 +142,6 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UWidgetComponent> OverheadWidgetComponent;
-
-	UPROPERTY(EditDefaultsOnly, Category = "UI")
-	TSubclassOf<UUserWidget> OverheadWidgetClass;
 
 	UPROPERTY()
 	TObjectPtr<UUBVBuildingOverheadWidget> OverheadWidget;

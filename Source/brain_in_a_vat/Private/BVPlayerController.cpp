@@ -12,6 +12,7 @@
 #include "Buildings/BVBuildingBase.h"
 #include "Buildings/BVBuildingGhost.h"
 #include "Components/AudioComponent.h"
+#include "Components/ShapeComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
@@ -328,9 +329,16 @@ void ABVPlayerController::EnterConstructionMode()
 			if (BuildingCDO)
 			{
 				UStaticMeshComponent* BuildingMeshComp = BuildingCDO->FindComponentByClass<UStaticMeshComponent>();
-				if (BuildingMeshComp)
+				USceneComponent* SceneRootComp = BuildingCDO->FindComponentByClass<USceneComponent>();
+
+				UStaticMeshComponent* GhostMeshComp = CurrentGhostActor->FindComponentByClass<UStaticMeshComponent>();
+				
+				if (BuildingMeshComp && SceneRootComp && GhostMeshComp)
 				{
 					CurrentGhostActor->InitGhost(BuildingMeshComp->GetStaticMesh(), GhostMaterialBase);
+
+					CurrentGhostActor->SetActorScale3D(SceneRootComp->GetRelativeScale3D());
+					GhostMeshComp->SetRelativeTransform(BuildingMeshComp->GetRelativeTransform());
 				}
 			}
 		}

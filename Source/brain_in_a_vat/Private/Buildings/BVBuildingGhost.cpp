@@ -10,8 +10,11 @@ ABVBuildingGhost::ABVBuildingGhost()
 {
 	PrimaryActorTick.bCanEverTick = false;
 
+	SceneRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRootComponent"));
+	RootComponent = SceneRootComponent;
+	
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
-	RootComponent = MeshComponent;
+	MeshComponent->SetupAttachment(SceneRootComponent);
 
 	MeshComponent->SetCollisionProfileName(TEXT("NoCollision"));
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
