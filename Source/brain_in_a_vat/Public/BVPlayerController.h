@@ -90,7 +90,14 @@ protected:
 	UPROPERTY()
 	TObjectPtr<ABVBuildingGhost> CurrentGhostActor;
 
-	bool bIsConstructionMode = false;
+	UPROPERTY()
+	TSubclassOf<ABVBuildingBase> PendingBuildingClass;
+
+	float StartToBuildRange = 100.0f;
+	FVector TargetBuildLocation;
+
+	bool bIsMovingToBuild = false;
+	bool bIsConstructionMode = false; 
 	bool bCanBuild = false;
 
 	void EnterConstructionMode();

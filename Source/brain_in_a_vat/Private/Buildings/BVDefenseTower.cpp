@@ -38,21 +38,35 @@ void ABVDefenseTower::BeginPlay()
 
 	// Attack Range Setting (for towers)
 
-	if (bCanAttack)
+	if (bCanAttack && AttackRangeSphere)
 	{
-		if (AttackRangeSphere)
+		AttackRangeSphere->SetSphereRadius(AttackRange);
+		AttackRangeSphere->OnComponentBeginOverlap.AddDynamic(this, &ABVDefenseTower::OnAttackRangeBeginOverlap);
+		AttackRangeSphere->OnComponentEndOverlap.AddDynamic(this, &ABVDefenseTower::OnAttackRangeEndOverlap);
+
+		TArray<AActor*> OverlappingActors;
+		AttackRangeSphere->GetOverlappingActors(OverlappingActors);
+
+		for (AActor* Actor : OverlappingActors)
 		{
-			AttackRangeSphere->SetSphereRadius(AttackRange);
-			AttackRangeSphere->OnComponentBeginOverlap.AddDynamic(this, &ABVDefenseTower::OnAttackRangeBeginOverlap);
-			AttackRangeSphere->OnComponentEndOverlap.AddDynamic(this, &ABVDefenseTower::OnAttackRangeEndOverlap);
+			if (!Actor || Actor == this) continue;
+
+			const IGenericTeamAgentInterface* TargetTeamAgent = Cast<IGenericTeamAgentInterface>(Actor);
+			if (!TargetTeamAgent) continue;
+
+			FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
+			FGenericTeamId MyTeamId = GetGenericTeamId();
+
+			if (OtherTeamId != FGenericTeamId::NoTeam && OtherTeamId != MyTeamId)
+			{
+				EnemiesInRange.AddUnique(Actor);
+			}
 		}
 	}
 	else
 	{
-		if (AttackRangeSphere)
-		{
-			AttackRangeSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-		}
+		AttackRangeSphere->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+		
 	}
 	
 }

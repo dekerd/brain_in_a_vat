@@ -139,6 +139,38 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 		UpdateGhostLocation();
 	}
 
+	// Moving To Construction Site
+	if (bIsMovingToBuild)
+	{
+		APawn* ControlledPawn = GetPawn();
+		if (ControlledPawn)
+		{
+			float Distance = FVector::Dist2D(ControlledPawn->GetActorLocation(), TargetBuildLocation);
+
+			if (Distance <= StartToBuildRange)
+			{
+				StopMovement();
+
+				AMainCharacter* MainCharacter = Cast<AMainCharacter>(ControlledPawn);
+				if (MainCharacter && PendingBuildingClass)
+				{
+					MainCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass);
+				}
+
+				if (CurrentGhostActor)
+				{
+					CurrentGhostActor->Destroy();
+					CurrentGhostActor = nullptr;
+				}
+
+				bIsMovingToBuild = false;
+				PendingBuildingClass = nullptr;
+
+			}
+		}
+		
+	}
+
 	// Mouse Hovering
 	FHitResult Hit;
 	bool bHit = GetHitResultUnderCursor(ECC_MouseHover, false, Hit);
@@ -206,22 +238,24 @@ void ABVPlayerController::SetupInputComponent()
 
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 {
+
+	if (bIsMovingToBuild)
+	{
+		// Cancel the construction if the player wants to move elsewhere while going to the site
+		bIsMovingToBuild = false;
+		PendingBuildingClass = nullptr;
+
+		if (CurrentGhostActor)
+		{
+			CurrentGhostActor->Destroy();
+			CurrentGhostActor = nullptr;
+		}
+	}
+	
 	FHitResult Hit;
 	if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 	{
 		const FVector DestLocation = Hit.ImpactPoint;
-		if (CurrentBuildingClass)
-		{
-			AMainCharacter* MyCharacter = Cast<AMainCharacter>(GetPawn());
-			if (MyCharacter)
-			{
-				MyCharacter->ConstructBuilding(DestLocation, CurrentBuildingClass);
-
-				CurrentBuildingClass = nullptr;
-				return;
-			}
-		}
-
 		if (APawn* ControlledPawn = GetPawn())
 		{
 			DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
@@ -290,12 +324,13 @@ void ABVPlayerController::OnBuildClick()
 	{
 		if (bCanBuild && CurrentGhostActor)
 		{
-			AMainCharacter* MainCharacter = Cast<AMainCharacter>(GetPawn());
-			if (MainCharacter && DefaultBuildingClass)
-			{
-				MainCharacter->ConstructBuilding(CurrentGhostActor->GetActorLocation(), DefaultBuildingClass);
-				ExitConstructionMode();
-			}
+			PendingBuildingClass = DefaultBuildingClass;
+			TargetBuildLocation = CurrentGhostActor->GetActorLocation();
+
+			// Moving to construction site
+			bIsMovingToBuild = true;
+			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, TargetBuildLocation);
+			bIsConstructionMode = false;
 		}
 		else
 		{

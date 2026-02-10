@@ -5,12 +5,19 @@
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
+#include "Components/SphereComponent.h"
 #include "GAS/CombatAttributeSet.h"
 
 
 // Sets default values
 ABVLaserBeamBase::ABVLaserBeamBase()
 {
+	// Collision
+	if (CollisionComponent)
+	{
+		CollisionComponent->SetCollisionProfileName(TEXT("NoCollision"));
+		CollisionComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
 
 	// Niagara
 	NiagaraComponent = CreateDefaultSubobject<UNiagaraComponent>(TEXT("Niagara"));
@@ -24,7 +31,6 @@ ABVLaserBeamBase::ABVLaserBeamBase()
 	}
 
 	// Sound
-
 	static ConstructorHelpers::FObjectFinder<USoundBase> FireSoundRef(TEXT("/Script/Engine.SoundWave'/Game/SFX/Weapon/LaserBeam/LaserBeam.LaserBeam'"));
 	if (FireSoundRef.Succeeded())
 	{

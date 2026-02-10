@@ -83,7 +83,7 @@ ABVBuildingBase::ABVBuildingBase()
 	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidget"));
 	OverheadWidgetComponent->SetupAttachment(RootComponent);
 	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	OverheadWidgetComponent->SetDrawSize(FVector2D(250.f, 50.f));
+	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f));
 	
 }
 
@@ -126,6 +126,11 @@ void ABVBuildingBase::DestroyBuilding()
 
 	// Destroy
 	SetLifeSpan(1.0f);
+	
+}
+
+void ABVBuildingBase::FinishConstruction()
+{
 	
 }
 
@@ -187,7 +192,11 @@ void ABVBuildingBase::BeginPlay()
 	// Building Overhead Widget
 	if (OverheadWidgetComponent)
 	{
-
+		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
+		FVector WidgetLoc = Bounds.Origin;
+		WidgetLoc.Z = TopZ + 100.0f;
+		OverheadWidgetComponent->SetWorldLocation(WidgetLoc);
+		
 		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
 			OverheadWidget = Cast<UUBVBuildingOverheadWidget>(UserWidget);

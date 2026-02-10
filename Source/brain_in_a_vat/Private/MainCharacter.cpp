@@ -14,6 +14,7 @@
 #include "UObject/ConstructorHelpers.h"
 #include "DrawDebugHelpers.h"
 #include "Buildings/BVBuildingBase.h"
+#include "Buildings/BVConstructionSite.h"
 #include "Components/SphereComponent.h"
 #include "Characters/BVAutobotBase.h"
 #include "Weapons/Projectiles/BVLaserBeamBase.h"
@@ -84,6 +85,7 @@ AMainCharacter::AMainCharacter()
 	Camera = CreateDefaultSubobject<UCameraComponent>(TEXT("Camera"));
 	Camera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	Camera->bUsePawnControlRotation = false;
+	// Camera->ProjectionMode = ECameraProjectionMode::Orthographic;
 
 	// Attack Sphere
 	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));
@@ -265,33 +267,22 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass)
 {
 	
-	if (!BuildingClass) return;
+	if (!BuildingClass || !ConstructionSiteClass) return;
 
-	UWorld* World = GetWorld();
-	if (!World) return;
+	FTransform SpawnTransform(FRotator::ZeroRotator, TargetLocation);
 
-	ABVBuildingBase* BuildingCDO = BuildingClass->GetDefaultObject<ABVBuildingBase>();
-	if (BuildingCDO)
-	{
-		int32 Cost = BuildingCDO->BuildCost;
-
-		// TODO : Gold Check
-	}
-
-	FVector SpawnLocation = TargetLocation;
-	SpawnLocation.Z += 10.0f;
-
-	FActorSpawnParameters SpawnParams;
-	SpawnParams.Owner = this;
-	SpawnParams.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	FRotator SpawnRotation = FRotator::ZeroRotator;
-
-	ABVBuildingBase* NewBuilding = World->SpawnActor<ABVBuildingBase>(
-		BuildingClass,
-		SpawnLocation,
-		SpawnRotation,
-		SpawnParams);
+	ABVConstructionSite* Site = GetWorld()->SpawnActorDeferred<ABVConstructionSite>(
+		ConstructionSiteClass,
+		SpawnTransform,
+		this,
+		this,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 	
+	if (Site)
+	{
+		Site->InitConstruction(BuildingClass, GetGenericTeamId());
+		UGameplayStatics::FinishSpawningActor(Site, SpawnTransform);
+	}
 }
 
 void AMainCharacter::PlayRandomMoveSound()

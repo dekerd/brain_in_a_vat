@@ -114,6 +114,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Building")
 	void ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass);
 
+	UPROPERTY(EditDefaultsOnly, Category = "Construction")
+	TSubclassOf<class ABVConstructionSite> ConstructionSiteClass;
+
 // Sound Effects
 public:
 	void PlayRandomMoveSound();

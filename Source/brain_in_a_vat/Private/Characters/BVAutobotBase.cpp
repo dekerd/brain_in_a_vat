@@ -105,6 +105,14 @@ void ABVAutobotBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	// Get the height of the autobot
+	float TopZ = GetActorLocation().Z;
+	if (GetCapsuleComponent())
+	{
+		TopZ += GetCapsuleComponent()->GetScaledCapsuleHalfHeight();
+	}
+	
+
 	// Disable Jitter Effect of Hovering
 	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), TEXT("r.CustomDepthTemporalAAJitter 0"));
 
@@ -139,6 +147,11 @@ void ABVAutobotBase::BeginPlay()
 
 	if (OverheadWidgetComponent)
 	{
+		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
+		FVector WidgetLoc = GetActorLocation();
+		WidgetLoc.Z = TopZ + 50.0f;
+		OverheadWidgetComponent->SetWorldLocation(WidgetLoc);
+		
 		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
 			if (UBVUnitOverheadWidget* OverheadWidget = Cast<UBVUnitOverheadWidget>(UserWidget))

@@ -63,7 +63,11 @@ protected:
 	virtual void BeginPlay() override;
 	
 // Building Components
+public:
 
+	UStaticMeshComponent* GetStaticMeshComponent() { return StaticMeshComponent; }
+	
+protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<class USceneComponent> SceneRootComponent;
 	
@@ -97,17 +101,26 @@ protected:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> InitStatsEffect;
 
-// Building Cost
-
+// Construction
 public:
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
-	int32 BuildCost = 100;
+	int32 ConstructionCost = 100;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
-	float BuildTime = 10.f;
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Construction")
+	float ConstructionTime = 10.0f;
 
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
 	UTexture2D* BuildingIcon;
+
+protected:
+	
+	float CurrentBuildProgress = 0.0f;
+	bool bIsConstructing = false;
+
+	UPROPERTY()
+	UMaterialInstanceDynamic* ConstructionDMI;
+
+	void FinishConstruction();
 	
 // Gameplay Ability System (GAS)
 public:
