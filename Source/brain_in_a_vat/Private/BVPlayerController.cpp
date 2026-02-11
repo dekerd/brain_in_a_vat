@@ -239,10 +239,11 @@ void ABVPlayerController::SetupInputComponent()
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 {
 
-	if (bIsMovingToBuild)
+	if (bIsMovingToBuild || bIsConstructionMode)
 	{
 		// Cancel the construction if the player wants to move elsewhere while going to the site
 		bIsMovingToBuild = false;
+		bIsConstructionMode = false;
 		PendingBuildingClass = nullptr;
 
 		if (CurrentGhostActor)

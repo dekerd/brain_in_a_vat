@@ -12,7 +12,7 @@
 #include "GAS/CombatAttributeSet.h"
 #include "Perception/AISense_Sight.h"
 #include "Collision/BVCollision.h"
-#include "Components/SphereComponent.h"
+#include "Components/BoxComponent.h"
 #include "Data/UnitStats.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/UBVBuildingOverheadWidget.h"

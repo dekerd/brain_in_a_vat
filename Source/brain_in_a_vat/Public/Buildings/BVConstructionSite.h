@@ -7,6 +7,7 @@
 #include "GameFramework/Actor.h"
 #include "BVConstructionSite.generated.h"
 
+class UWidgetComponent;
 class UBoxComponent;
 class ABVBuildingBase;
 
@@ -37,6 +38,18 @@ public:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	UStaticMeshComponent* MeshComponent;
 
+	UPROPERTY()
+	TArray<UMaterialInstanceDynamic*> RealMeshDMI;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UStaticMeshComponent> GhostMeshComponent;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Components")
+	TObjectPtr<UMaterialInterface> GhostMaterialBase;
+
+	UPROPERTY()
+	TObjectPtr<UMaterialInstanceDynamic> GhostMaterialDMI;
+
 
 	TSubclassOf<ABVBuildingBase> TargetBuildingClass;
 
@@ -52,7 +65,12 @@ public:
 private:
 	float CurrentProgress = 0.0f;
 	bool bIsBuilding = false;
-
-	// 진짜 건물 소환 함수
+	
 	void SpawnRealBuilding();
+
+// Construction Progress Widget
+protected:
+	
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<UWidgetComponent> ProgressWidgetComponent;
 };

@@ -12,6 +12,7 @@
 #include "Headers/BVTeam.h"
 #include "BVBuildingBase.generated.h"
 
+class UBoxComponent;
 class USphereComponent;
 class UWidgetComponent;
 class UUBVBuildingOverheadWidget;
@@ -65,7 +66,11 @@ protected:
 // Building Components
 public:
 
+	USceneComponent* GetSceneRootComponent() { return SceneRootComponent; }
+
 	UStaticMeshComponent* GetStaticMeshComponent() { return StaticMeshComponent; }
+
+	UBoxComponent* GetBoxComponent() { return BoxComponent; }
 	
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
