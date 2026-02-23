@@ -17,9 +17,13 @@ class BRAIN_IN_A_VAT_API UBVConstructionWidget : public UUserWidget
 
 public:
 	void SetProgress(float InPercent);
+	void SetHealth(float InPercent);
 
 protected:
 
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<UProgressBar> ConstructionProgressBar;
+
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<UProgressBar> HealthBar;
 };

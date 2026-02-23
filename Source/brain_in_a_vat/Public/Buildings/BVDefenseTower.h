@@ -41,6 +41,9 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Combat")
 	float AttackRange = 800.f;
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Combat")
+	FName FireSocketName = FName("LaserBeamStart");
+
 protected:
 	float TimeSinceLastShot = 0.f;
 

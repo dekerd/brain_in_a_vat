@@ -3,16 +3,22 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "AbilitySystemInterface.h"
 #include "GenericTeamAgentInterface.h"
 #include "GameFramework/Actor.h"
+#include "Interface/BVDamageableInterface.h"
 #include "BVConstructionSite.generated.h"
 
 class UWidgetComponent;
 class UBoxComponent;
 class ABVBuildingBase;
+class UAIPerceptionStimuliSourceComponent;
 
 UCLASS()
-class BRAIN_IN_A_VAT_API ABVConstructionSite : public AActor, public IGenericTeamAgentInterface
+class BRAIN_IN_A_VAT_API ABVConstructionSite : public AActor,
+											   public IGenericTeamAgentInterface,
+											   public IAbilitySystemInterface,
+											   public IBVDamageableInterface
 {
 	GENERATED_BODY()
 
@@ -53,7 +59,7 @@ public:
 
 	TSubclassOf<ABVBuildingBase> TargetBuildingClass;
 
-	float ConstructionTime = 10.f;
+	float ConstructionTime = 20.f;
 
 	FGenericTeamId TeamId;
 
@@ -68,9 +74,33 @@ private:
 	
 	void SpawnRealBuilding();
 
+// GAS
+public:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "AI")
+	TObjectPtr<UAIPerceptionStimuliSourceComponent> StimuliSourceComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+	TObjectPtr<UAbilitySystemComponent> ASC;
+
+	UPROPERTY()
+	TObjectPtr<class UCombatAttributeSet> CombatAttributes;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<class UBVHealthComponent> HealthComponent;
+
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override {return ASC;}
+	virtual FGenericTeamId GetTeamId_Implementation() const override { return TeamId; }
+	virtual bool IsDestroyed_Implementation() const override { return bIsDestroyed; }
+
+private:
+	bool bIsDestroyed = false;
+	float MaxHealth = 100.f;
+
 // Construction Progress Widget
 protected:
 	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UWidgetComponent> ProgressWidgetComponent;
+	
 };

@@ -12,3 +12,11 @@ void UBVConstructionWidget::SetProgress(float InPercent)
 		ConstructionProgressBar->SetPercent(InPercent);
 	}
 }
+
+void UBVConstructionWidget::SetHealth(float InPercent)
+{
+	if (HealthBar)
+	{
+		HealthBar->SetPercent(InPercent);
+	}
+}

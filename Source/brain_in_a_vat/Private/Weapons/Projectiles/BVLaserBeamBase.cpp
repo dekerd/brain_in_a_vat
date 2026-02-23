@@ -36,6 +36,7 @@ ABVLaserBeamBase::ABVLaserBeamBase()
 	{
 		FireSound = FireSoundRef.Object;
 	}
+	FireSoundVolume = 0.1f;
 	
 	// Projectile Movement
 	ProjectileMovement->InitialSpeed = 10000.f;

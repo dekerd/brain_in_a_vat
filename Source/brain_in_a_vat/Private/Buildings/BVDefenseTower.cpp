@@ -111,7 +111,18 @@ void ABVDefenseTower::FireLaser(float DeltaTime)
 
 	if (UWorld* World = GetWorld())
 	{
-		FVector FireLocation = GetActorLocation() + FVector(0, 0, 150.f);
+
+		// Set Fire Location
+		FVector FireLocation;
+		if (StaticMeshComponent && StaticMeshComponent->DoesSocketExist(FireSocketName))
+		{
+			FireLocation = StaticMeshComponent->GetSocketLocation(FireSocketName);
+		}
+		else
+		{
+			FireLocation = GetActorLocation() + FVector(0, 0, 150.f);
+		}
+		
 		FVector TargetLocation = Target->GetActorLocation();
 
 		FActorSpawnParameters SpawnParams;

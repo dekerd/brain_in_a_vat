@@ -6,8 +6,16 @@
 #include "Buildings/BVBuildingBase.h"
 #include "Collision/BVCollision.h"
 #include "Components/BoxComponent.h"
+#include "Components/BVHealthComponent.h"
 #include "Components/WidgetComponent.h"
+#include "GAS/CombatAttributeSet.h"
+#include "Perception/AIPerceptionStimuliSourceComponent.h"
+#include "Perception/AISense_Sight.h"
 #include "Widget/BVConstructionWidget.h"
+#include "Perception/AIPerceptionStimuliSourceComponent.h"
+#include "Perception/AISense_Sight.h"
+#include "Components/BVHealthComponent.h"
+#include "GAS/CombatAttributeSet.h"
 
 
 // Sets default values
@@ -15,6 +23,7 @@ ABVConstructionSite::ABVConstructionSite()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
+	// Components
 	SceneRootComponent = CreateDefaultSubobject<USceneComponent>(TEXT("SceneRoot"));
 	RootComponent = SceneRootComponent;
 
@@ -22,8 +31,14 @@ ABVConstructionSite::ABVConstructionSite()
 	BoxComponent->SetupAttachment(RootComponent);
 	BoxComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
 	BoxComponent->SetGenerateOverlapEvents(true);
-	BoxComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	BoxComponent->SetCollisionObjectType(ECC_Building);
+
+	BoxComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);       
+	BoxComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Block); 
+	BoxComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block);  
+	BoxComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);   
+	BoxComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
+	BoxComponent->SetCollisionResponseToChannel(ECC_Player, ECR_Block);
 
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
 	MeshComponent->SetupAttachment(RootComponent);
@@ -33,6 +48,16 @@ ABVConstructionSite::ABVConstructionSite()
 	GhostMeshComponent->SetupAttachment(RootComponent);
 	GhostMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 	GhostMeshComponent->SetCastShadow(false);
+
+	// GAS
+	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
+	ASC->SetIsReplicated(true);
+
+	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
+	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
+
+	// AI
+	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSource"));
 
 	// Widget
 	ProgressWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("ProgressWidgetComponent"));
@@ -46,6 +71,32 @@ ABVConstructionSite::ABVConstructionSite()
 void ABVConstructionSite::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// AI stimuli source initialization
+	if (StimuliSourceComponent)
+	{
+		StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
+		StimuliSourceComponent->RegisterWithPerceptionSystem();
+	}
+
+	// GAS
+	if (ASC && CombatAttributes)
+	{
+		ASC->InitAbilityActorInfo(this, this);
+		HealthComponent->InitFromGAS(ASC, CombatAttributes);
+		
+		if (TargetBuildingClass)
+		{
+			ABVBuildingBase* BuildingCDO = TargetBuildingClass->GetDefaultObject<ABVBuildingBase>();
+			if (BuildingCDO && BuildingCDO->GetStats())
+			{
+				MaxHealth = BuildingCDO->GetStats()->MaxHealth;
+			}
+		}
+
+		CombatAttributes->SetMaxHealth(MaxHealth);
+		CombatAttributes->SetHealth(FMath::FloorToFloat(MaxHealth * 0.01f) + 1); 
+	}
 
 	// Overhead Widget Size
 	if (ProgressWidgetComponent)
@@ -66,11 +117,24 @@ void ABVConstructionSite::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
 
+	if (bIsDestroyed) return;
+
 	if (bIsBuilding)
 	{
 		CurrentProgress += DeltaTime;
 		float ProgressRatio = FMath::Clamp(CurrentProgress / ConstructionTime, 0.0f, 1.0f);
 
+		// Health
+		if (ASC && CombatAttributes)
+		{
+			float CurrentHealth = CombatAttributes->GetHealth();
+			float HealAmount = (MaxHealth / ConstructionTime) * DeltaTime;
+			
+			float NewHealth = FMath::Clamp(CurrentHealth + HealAmount, 0.0f, MaxHealth);
+			CombatAttributes->SetHealth(NewHealth);
+		}
+
+		// Progress Widget
 		if (ProgressWidgetComponent)
 		{
 			UBVConstructionWidget* ProgressWidget = Cast<UBVConstructionWidget>(ProgressWidgetComponent->GetUserWidgetObject());
@@ -78,8 +142,14 @@ void ABVConstructionSite::Tick(float DeltaTime)
 			{
 				ProgressWidget->SetProgress(ProgressRatio);
 			}
+
+			if (HealthComponent)
+			{
+				ProgressWidget->SetHealth(HealthComponent->GetHealthRatio());
+			}
 		}
 
+		// Opacity UI
 		float NewOpacity = FMath::Lerp(1.0f, 0.0f, ProgressRatio);
 
 		for (UMaterialInstanceDynamic* DMI : RealMeshDMI)
@@ -181,9 +251,15 @@ void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildi
 
 void ABVConstructionSite::SpawnRealBuilding()
 {
-	if (!TargetBuildingClass) return;
+	if (!TargetBuildingClass || bIsDestroyed) return;
 
 	bIsBuilding = false;
+
+	float FinalHealthRatio = 1.0f;
+	if (HealthComponent)
+	{
+		FinalHealthRatio = HealthComponent->GetHealthRatio();
+	}
 
 	FActorSpawnParameters Params;
 	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
@@ -197,9 +273,17 @@ void ABVConstructionSite::SpawnRealBuilding()
 
 	if (NewBuilding)
 	{
+		// New Building TeamId
 		if (IGenericTeamAgentInterface* NewBuildingTeam = Cast<IGenericTeamAgentInterface>(NewBuilding))
 		{
 			NewBuildingTeam->SetGenericTeamId(TeamId);
+		}
+
+		// New Builing Health Value
+		if (NewBuilding->GetCombatAttributeSet())
+		{
+			float SetupMaxHealth = NewBuilding->GetCombatAttributeSet()->GetMaxHealth();
+			NewBuilding->GetCombatAttributeSet()->SetHealth(SetupMaxHealth * FinalHealthRatio);
 		}
 	}
 
