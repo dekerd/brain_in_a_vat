@@ -37,18 +37,17 @@ protected:
 protected:
 
 	virtual void SetupInputComponent() override;
+
+	// 1. Basic IMC
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
-	TObjectPtr<class UInputMappingContext> InputMappingContext; 
+	TObjectPtr<class UInputMappingContext> InputMappingContext;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<class UInputAction> MoveAction;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<class UInputAction> SelectAction;
-
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
-	TObjectPtr<class UInputAction> BuildAction;
 	
 	UPROPERTY(BlueprintReadOnly, Category = "Selection")
 	TObjectPtr<AActor> SelectedActor;
@@ -58,7 +57,20 @@ protected:
 
 	void MoveToLocation(const FInputActionValue& Value);
 	void SelectObject();
+
+	// 2. IMC for building
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputMappingContext> BuildMappingContext;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UInputAction> BuildClickAction;
 	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UInputAction> BuildAction;
+	
+	void OnBuildClick();   
+	void OnBuildKeyPressed();
 
 	// Player Team setting
 private:
@@ -69,10 +81,6 @@ private:
 public:
 	UFUNCTION(BlueprintCallable, Category = "Build")
 	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass);
-
-	void OnBuildKeyPressed();
-
-	void OnBuildClick();
 
 protected:
 	UPROPERTY()
@@ -131,6 +139,17 @@ public:
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<class UUserWidget> GoldPopupWidgetClass;
+
+// NPC Interaction Widget
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> ShopWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> ShopWidget;
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void OpenShopUI();
 
 	
 // Background Music

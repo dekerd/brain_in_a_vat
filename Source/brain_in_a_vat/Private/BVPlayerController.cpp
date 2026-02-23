@@ -11,6 +11,7 @@
 #include "Blueprint/AIBlueprintHelperLibrary.h"
 #include "Buildings/BVBuildingBase.h"
 #include "Buildings/BVBuildingGhost.h"
+#include "Characters/BVNPCBase.h"
 #include "Components/AudioComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Kismet/GameplayStatics.h"
@@ -23,32 +24,6 @@ ABVPlayerController::ABVPlayerController()
 	DefaultMouseCursor = EMouseCursor::Default;
 
 	HoveredObject = nullptr;
-
-	// Character Input
-
-	static ConstructorHelpers::FObjectFinder<UInputMappingContext> InputMappingContextRef(TEXT("/Script/EnhancedInput.InputMappingContext'/Game/Inputs/IMC_Player.IMC_Player'"));
-	if (InputMappingContextRef.Succeeded())
-	{
-		InputMappingContext = InputMappingContextRef.Object;
-	}
-
-	static ConstructorHelpers::FObjectFinder<UInputAction> MoveActionRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_RightClickMove.IA_RightClickMove'"));
-	if (MoveActionRef.Succeeded())
-	{
-		MoveAction = MoveActionRef.Object;
-	}
-
-	static ConstructorHelpers::FObjectFinder<UInputAction> SelectActionRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_Select.IA_Select'"));
-	if (SelectActionRef.Succeeded())
-	{
-		SelectAction = SelectActionRef.Object;
-	}
-
-	static ConstructorHelpers::FObjectFinder<UInputAction> BuildActionRef(TEXT("/Script/EnhancedInput.InputAction'/Game/Inputs/IA_Build.IA_Build'"));
-	if (BuildActionRef.Succeeded())
-	{
-		BuildAction = BuildActionRef.Object;
-	}
 
 }
 
@@ -84,30 +59,6 @@ void ABVPlayerController::BeginPlay()
 			MainHUDWidget->AddToViewport();
 		}
 	}
-	
-	/*
-	// Inventory Widget
-	if (InventoryWidgetClass)
-	{
-		InventoryWidget = CreateWidget<UBVInventoryWidget>(this, InventoryWidgetClass);
-		if (InventoryWidget)
-		{
-			InventoryWidget->AddToViewport();
-			InventoryWidget->RefreshInventory();
-		}
-	}
-
-	// Resource Widget
-	if (ResourceHUDClass)
-	{
-		ResourceHUD = CreateWidget<UUserWidget>(this, ResourceHUDClass);
-		if (ResourceHUD)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("Resource widget added!!"));
-			ResourceHUD->AddToViewport(10);
-		}
-	}
-	*/
 
 	// <------------------ BGM ------------------>
 	if (BGMPlaylist.Num() > 0)
@@ -226,14 +177,32 @@ void ABVPlayerController::SetupInputComponent()
 
 		if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
 		{
-			// Right Click -> Move
-			EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Started, this, &ABVPlayerController::MoveToLocation);
-			// Left Click -> Select
-			EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildClick);
-			// B -> Build
-			EnhancedInputComponent->BindAction(BuildAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildKeyPressed);
+			// [Normal Mode]
+			if (MoveAction)
+			{
+				// Right Click -> Move
+				EnhancedInputComponent->BindAction(MoveAction, ETriggerEvent::Started, this, &ABVPlayerController::MoveToLocation);
+			}
+
+			if (SelectAction)
+			{
+				// Left Click -> Select
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::SelectObject);
+			}
+
+			// [Build Mode]
+			if (BuildAction)
+			{
+				// B -> Enter to Build Mode
+				EnhancedInputComponent->BindAction(BuildAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildKeyPressed);
+			}
+			
+			if (BuildClickAction)
+			{
+				// Left Click in Build Mode -> Confirm the construction
+				EnhancedInputComponent->BindAction(BuildClickAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildClick);
+			}
 		}
-	
 }
 
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
@@ -285,6 +254,27 @@ void ABVPlayerController::SelectObject()
 		if (SelectedActor)
 		{
 			UE_LOG(LogTemp, Log, TEXT("Selected: %s"), *SelectedActor->GetName())
+			
+			ABVNPCBase* ClickedNPC = Cast<ABVNPCBase>(SelectedActor);
+			if (ClickedNPC)
+			{
+				AMainCharacter* MyCharacter = Cast<AMainCharacter>(GetPawn());
+				if (MyCharacter)
+				{
+					float Distance = FVector::Dist(MyCharacter->GetActorLocation(), ClickedNPC->GetActorLocation());
+					float InteractableDistance = 300.0f;
+
+					if (Distance <= InteractableDistance)
+					{
+						ClickedNPC->Interact(MyCharacter);
+						GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("NPC 상호작용 성공!"));
+					}
+					else
+					{
+						GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("NPC가 너무 멀리 있습니다!"));
+					}
+				}
+			}
 		}
 	}
 }
@@ -307,40 +297,25 @@ void ABVPlayerController::OnBuildKeyPressed()
 	{
 		EnterConstructionMode();
 	}
-
-	/*
-	AMainCharacter* MyCharacter = Cast<AMainCharacter>(GetPawn());
-	if (!MyCharacter) return;
-	if (!DefaultBuildingClass) return;
-
-	FVector BuildLocation = MyCharacter->GetActorLocation();
-	MyCharacter->ConstructBuilding(BuildLocation, DefaultBuildingClass);
-	*/
 	
 }
 
 void ABVPlayerController::OnBuildClick()
 {
-	if (bIsConstructionMode)
+	// This function is called under Build IMC
+	if (bCanBuild && CurrentGhostActor)
 	{
-		if (bCanBuild && CurrentGhostActor)
-		{
-			PendingBuildingClass = DefaultBuildingClass;
-			TargetBuildLocation = CurrentGhostActor->GetActorLocation();
+		PendingBuildingClass = DefaultBuildingClass;
+		TargetBuildLocation = CurrentGhostActor->GetActorLocation();
 
-			// Moving to construction site
-			bIsMovingToBuild = true;
-			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, TargetBuildLocation);
-			bIsConstructionMode = false;
-		}
-		else
-		{
-			// TODO : Can't Build there
-		}
+		// Moving to construction site
+		bIsMovingToBuild = true;
+		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, TargetBuildLocation);
+		bIsConstructionMode = false;
 	}
 	else
 	{
-		SelectObject();
+		// TODO : Can't Build there
 	}
 	
 }
@@ -350,6 +325,15 @@ void ABVPlayerController::EnterConstructionMode()
 	if (!DefaultBuildingClass || !GhostActorClass) return;
 
 	bIsConstructionMode = true;
+
+	// Switching to Building IMC
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		if (BuildMappingContext)
+		{
+			Subsystem->AddMappingContext(BuildMappingContext, 1);
+		}
+	}
 
 	// 1. First, spawn a building actor 
 	if (UWorld* World = GetWorld())
@@ -385,6 +369,17 @@ void ABVPlayerController::EnterConstructionMode()
 void ABVPlayerController::ExitConstructionMode()
 {
 	bIsConstructionMode = false;
+
+	// Switch to Normal IMC
+	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+	{
+		if (BuildMappingContext)
+		{
+			Subsystem->RemoveMappingContext(BuildMappingContext);
+		}
+	}
+
+	// Turn off the Ghost Actor
 	if (CurrentGhostActor)
 	{
 		CurrentGhostActor->Destroy();
@@ -432,5 +427,24 @@ void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
 	if (GoldPickupSound)
 	{
 		UGameplayStatics::PlaySound2D(this, GoldPickupSound, GoldPickupSoundVolume, 1.5f);
+	}
+}
+
+void ABVPlayerController::OpenShopUI()
+{
+	if (ShopWidget && ShopWidget->IsInViewport()) return;
+
+	if (ShopWidgetClass)
+	{
+		ShopWidget = CreateWidget<UUserWidget>(this, ShopWidgetClass);
+		if (ShopWidget)
+		{
+			ShopWidget->AddToViewport();
+			
+			// UI가 열렸을 때 UI에만 마우스 입력이 들어가도록 설정할 수도 있습니다.
+			// FInputModeUIOnly InputMode;
+			// SetInputMode(InputMode);
+			// bShowMouseCursor = true;
+		}
 	}
 }

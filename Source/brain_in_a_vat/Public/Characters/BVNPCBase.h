@@ -15,6 +15,9 @@ public:
 	// Sets default values for this character's properties
 	ABVNPCBase();
 
+	UFUNCTION(BlueprintCallable, Category = "Interaction")
+	virtual void Interact(class AMainCharacter* Interactor);
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
