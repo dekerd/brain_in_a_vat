@@ -17,6 +17,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
+#include "Widget/BVShopWidget.h"
 
 ABVPlayerController::ABVPlayerController()
 {
@@ -430,7 +431,7 @@ void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
 	}
 }
 
-void ABVPlayerController::OpenShopUI()
+void ABVPlayerController::OpenShopUI(ABVNPCBase* TargetNPC)
 {
 	if (ShopWidget && ShopWidget->IsInViewport()) return;
 
@@ -439,12 +440,32 @@ void ABVPlayerController::OpenShopUI()
 		ShopWidget = CreateWidget<UUserWidget>(this, ShopWidgetClass);
 		if (ShopWidget)
 		{
+			UBVShopWidget* MyShopWidget = Cast<UBVShopWidget>(ShopWidget);
+			if (MyShopWidget)
+			{
+				MyShopWidget->InitShop(TargetNPC);
+			}
 			ShopWidget->AddToViewport();
 			
-			// UI가 열렸을 때 UI에만 마우스 입력이 들어가도록 설정할 수도 있습니다.
-			// FInputModeUIOnly InputMode;
-			// SetInputMode(InputMode);
-			// bShowMouseCursor = true;
+	
+			// Inputs only make focus to the UI
+			FInputModeGameAndUI InputMode;
+			InputMode.SetWidgetToFocus(ShopWidget->TakeWidget());
+			SetInputMode(InputMode);
+			bShowMouseCursor = true;
 		}
+	}
+}
+
+void ABVPlayerController::CloseShopUI()
+{
+	if (ShopWidget && ShopWidget->IsInViewport())
+	{
+		ShopWidget->RemoveFromParent(); 
+		
+		FInputModeGameAndUI InputMode;
+		InputMode.SetHideCursorDuringCapture(false);
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
 	}
 }

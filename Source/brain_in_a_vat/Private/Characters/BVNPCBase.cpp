@@ -25,7 +25,7 @@ void ABVNPCBase::Interact(class AMainCharacter* Interactor)
 
 	if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(Interactor->GetController()))
 	{
-		BVPC->OpenShopUI();
+		BVPC->OpenShopUI(this);
 	}
 }
 

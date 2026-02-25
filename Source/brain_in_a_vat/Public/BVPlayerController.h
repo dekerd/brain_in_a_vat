@@ -8,6 +8,7 @@
 #include "GameFramework/PlayerController.h"
 #include "BVPlayerController.generated.h"
 
+class ABVNPCBase;
 class ABVBuildingGhost;
 class ABVBuildingBase;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSelectionChanged, AActor*, NewSelectedActor);
@@ -149,7 +150,10 @@ public:
 	TObjectPtr<class UUserWidget> ShopWidget;
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
-	void OpenShopUI();
+	void OpenShopUI(ABVNPCBase* TargetNPC);
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void CloseShopUI();
 
 	
 // Background Music

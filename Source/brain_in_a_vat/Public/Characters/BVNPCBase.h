@@ -18,6 +18,9 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	virtual void Interact(class AMainCharacter* Interactor);
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
+	TObjectPtr<class UTexture2D> NPCPortrait;
+
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
