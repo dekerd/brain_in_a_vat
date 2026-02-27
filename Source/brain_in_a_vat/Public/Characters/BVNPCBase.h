@@ -18,12 +18,14 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Interaction")
 	virtual void Interact(class AMainCharacter* Interactor);
 
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction")
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction|UI")
 	TObjectPtr<class UTexture2D> NPCPortrait;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Interaction|Shop")
+	TArray<TObjectPtr<class UBVItemData>> ShopItems;
 
 protected:
 	// Called when the game starts or when spawned
 	virtual void BeginPlay() override;
-
 	
 };

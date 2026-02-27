@@ -100,7 +100,7 @@ AMainCharacter::AMainCharacter()
 	AttackRangeSphere->SetGenerateOverlapEvents(true);
 
 	// Weapon Cooltime
-	WeaponCoolTime.Init(0.0f, 5);
+	// WeaponCoolTime.Init(0.0f, 5);
 	
 }
 
@@ -132,7 +132,8 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 	if (ItemData)
 	{
 		InventoryItems.Add(ItemData);
-
+		WeaponCoolTime.Add(0.0f);
+		
 		PlayRandomPickupSound();
 		OnInventoryUpdated.Broadcast();
 		

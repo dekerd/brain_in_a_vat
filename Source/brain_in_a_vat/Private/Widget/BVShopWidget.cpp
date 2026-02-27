@@ -6,12 +6,33 @@
 #include "BVPlayerController.h"
 #include "Components/Button.h"
 #include "Components/Image.h"
+#include "Components/WrapBox.h"
+#include "Item/BVItemData.h"
+#include "Widget/BVShopSlotWidget.h"
 
 void UBVShopWidget::InitShop(ABVNPCBase* InNPC)
 {
 	if (InNPC && NPC_PortraitImage)
 	{
 		NPC_PortraitImage->SetBrushFromTexture(InNPC->NPCPortrait);
+	}
+
+	// 2. Populate the Item Grid
+	if (ItemGrid && ShopSlotClass)
+	{
+		ItemGrid->ClearChildren();
+		
+		for (UBVItemData* Item : InNPC->ShopItems)
+		{
+			if (!Item) continue;
+			
+			UBVShopSlotWidget* NewSlot = CreateWidget<UBVShopSlotWidget>(this, ShopSlotClass);
+			if (NewSlot)
+			{
+				NewSlot->UpdateSlot(Item);
+				ItemGrid->AddChildToWrapBox(NewSlot);
+			}
+		}
 	}
 }
 

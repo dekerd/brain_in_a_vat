@@ -26,6 +26,15 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	TObjectPtr<UTexture2D> ItemIcon;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	TObjectPtr<UTexture2D> ItemFullImage;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item", meta = (MultiLine = "true"))
+	FText ItemDescription;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
+	int32 ItemPrice = 100;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	TObjectPtr<UStaticMesh> PickupMesh;

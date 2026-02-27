@@ -34,6 +34,12 @@ protected:
 
 	UFUNCTION()
 	void OnCloseButtonClicked();
+	
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UWrapBox> ItemGrid;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UBVShopSlotWidget> ShopSlotClass;
 
 
 };
