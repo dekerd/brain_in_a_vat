@@ -73,6 +73,39 @@ protected:
 	void OnBuildClick();   
 	void OnBuildKeyPressed();
 
+	// 3. Inputs for UIs
+
+public:
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ToggleInventoryUI();
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ToggleConstructionMenuUI();
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void CloseCurrentUI();
+
+protected:
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<class UInputAction> InventoryAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<class UInputAction> CloseUIAction;
+	
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> InventoryWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> InventoryWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> ConstructionMenuWidget;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> ConstructionMenuWidgetClass;
+
 	// Player Team setting
 private:
 	FGenericTeamId TeamID = FGenericTeamId(1);

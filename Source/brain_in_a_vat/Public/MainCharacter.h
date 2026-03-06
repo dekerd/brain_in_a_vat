@@ -47,6 +47,16 @@ public:
 // Inventory and Weapons
 	
 public:
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool EquipItem(class UBVItemData* ItemToEquip);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	bool UnequipItem(class UBVItemData* ItemToUnequip);
+
+	UFUNCTION(BlueprintCallable, Category = "Inventory")
+	const TArray<UBVItemData*>& GetEquippedWeapons() const { return EquippedWeapons; }
+	
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	void EquipWeapon(UBVItemData* NewWeapon) { CurrentWeapon = NewWeapon; }
 
@@ -59,7 +69,13 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Inventory")
 	const TArray<UBVItemData*>& GetInventoryItems() const { return InventoryItems; }
 
+	uint8 MAX_EQUIP_ITEM = 8;
+
 protected:
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
+	TArray<TObjectPtr<UBVItemData>> EquippedWeapons;
+	
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
 	TObjectPtr<UBVItemData> CurrentWeapon;
 

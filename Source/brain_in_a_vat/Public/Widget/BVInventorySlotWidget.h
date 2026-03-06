@@ -16,10 +16,18 @@ class BRAIN_IN_A_VAT_API UBVInventorySlotWidget : public UUserWidget
 
 public:
 
-	void UpdateSlot(class UBVItemData* ItemData);
+	void UpdateSlot(class UBVItemData* InItemData, bool bInIsEquipped);
 
 protected:
 
+	virtual FReply NativeOnMouseButtonDown(const FGeometry& InGeometry, const FPointerEvent& InMouseEvent) override;
+
+	UPROPERTY()
+	bool bIsEquippedSlot = false;
+
+	UPROPERTY()
+	TObjectPtr<class UBVItemData> ItemData;
+	
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UImage> ItemIconImage;
 };

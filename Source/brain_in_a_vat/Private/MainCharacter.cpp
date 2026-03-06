@@ -127,23 +127,58 @@ void AMainCharacter::Tick(float DeltaTime)
 
 }
 
-bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
+bool AMainCharacter::EquipItem(class UBVItemData* ItemToEquip)
 {
-	if (ItemData)
+	if (!ItemToEquip || EquippedWeapons.Num() >= MAX_EQUIP_ITEM) return false;
+	
+	if (InventoryItems.Contains(ItemToEquip))
 	{
-		InventoryItems.Add(ItemData);
+		InventoryItems.RemoveSingle(ItemToEquip);
+		EquippedWeapons.Add(ItemToEquip);
 		WeaponCoolTime.Add(0.0f);
 		
-		PlayRandomPickupSound();
 		OnInventoryUpdated.Broadcast();
-		
-		FString DebugMsg = FString::Printf(TEXT("Item Added to Inventory: %s"), *ItemData->ItemName.ToString());
-		GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Blue, DebugMsg);
-		
 		return true;
 	}
-
 	return false;
+}
+
+bool AMainCharacter::UnequipItem(class UBVItemData* ItemToUnequip)
+{
+	if (!ItemToUnequip) return false;
+
+	int32 Index = EquippedWeapons.Find(ItemToUnequip);
+	if (Index != INDEX_NONE)
+	{
+		EquippedWeapons.RemoveAt(Index);
+		WeaponCoolTime.RemoveAt(Index);
+		InventoryItems.Add(ItemToUnequip);
+		
+		OnInventoryUpdated.Broadcast();
+		return true;
+	}
+	return false;
+}
+
+bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
+{
+
+	if (!ItemData) return false;
+	
+	if (ItemData->ItemType == EItemType::Weapon && EquippedWeapons.Num() < MAX_EQUIP_ITEM)
+	{
+		EquippedWeapons.Add(ItemData);
+		WeaponCoolTime.Add(0.0f);
+	}
+	else
+	{
+		InventoryItems.Add(ItemData);
+	}
+
+	PlayRandomPickupSound();
+	OnInventoryUpdated.Broadcast();
+
+	return true;
 }
 
 void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
@@ -179,13 +214,12 @@ void AMainCharacter::AutoFire(float DeltaSecond)
 	// This function will be called for every tick
 
 	GlobalFireTimer += DeltaSecond;
-	// Fire Default Laser Beam
-	FireDefaultLaserBeam(DeltaSecond);
+	// FireDefaultLaserBeam(DeltaSecond);
 
 	// Fire weapons equipped
-	for (int32 i = 0; i < InventoryItems.Num(); ++i)
+	for (int32 i = 0; i < EquippedWeapons.Num(); ++i)
 	{
-		if (InventoryItems[i])
+		if (EquippedWeapons[i])
 		{
 			FireWeapons(DeltaSecond, i);
 		}
@@ -196,7 +230,7 @@ void AMainCharacter::AutoFire(float DeltaSecond)
 void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 {
 
-	UBVItemData* Weapon = InventoryItems[WeaponIndex];
+	UBVItemData* Weapon = EquippedWeapons[WeaponIndex];
 	
 	WeaponCoolTime[WeaponIndex] += DeltaSecond;
 	if (WeaponCoolTime[WeaponIndex] < Weapon->FireInterval) return;

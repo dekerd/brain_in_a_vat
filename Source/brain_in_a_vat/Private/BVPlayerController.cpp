@@ -203,6 +203,18 @@ void ABVPlayerController::SetupInputComponent()
 				// Left Click in Build Mode -> Confirm the construction
 				EnhancedInputComponent->BindAction(BuildClickAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildClick);
 			}
+
+			// Inventory Widget
+			if (InventoryAction)
+			{
+				EnhancedInputComponent->BindAction(InventoryAction, ETriggerEvent::Started, this, &ABVPlayerController::ToggleInventoryUI);
+			}
+
+			// ESC: Widget Close
+			if (CloseUIAction)
+			{
+				EnhancedInputComponent->BindAction(CloseUIAction, ETriggerEvent::Started, this, &ABVPlayerController::CloseCurrentUI);
+			}
 		}
 }
 
@@ -299,6 +311,90 @@ void ABVPlayerController::OnBuildKeyPressed()
 		EnterConstructionMode();
 	}
 	
+}
+
+void ABVPlayerController::ToggleInventoryUI()
+{
+	if (InventoryWidget && InventoryWidget->IsInViewport())
+	{
+		InventoryWidget->RemoveFromParent();
+
+		FInputModeGameAndUI InputMode;
+		InputMode.SetHideCursorDuringCapture(false);
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
+	}
+	else
+	{
+		CloseCurrentUI(); 
+
+		if (!InventoryWidget && InventoryWidgetClass)
+		{
+			InventoryWidget = CreateWidget<UUserWidget>(this, InventoryWidgetClass);
+		}
+
+		if (InventoryWidget)
+		{
+			if (UBVInventoryWidget* InvWidget = Cast<UBVInventoryWidget>(InventoryWidget))
+			{
+				InvWidget->RefreshInventory();
+			}
+			InventoryWidget->AddToViewport();
+
+			FInputModeGameAndUI InputMode;
+			InputMode.SetWidgetToFocus(InventoryWidget->TakeWidget());
+			SetInputMode(InputMode);
+		}
+	}
+}
+
+void ABVPlayerController::ToggleConstructionMenuUI()
+{
+	if (ConstructionMenuWidget && ConstructionMenuWidget->IsInViewport())
+	{
+		ConstructionMenuWidget->RemoveFromParent();
+	}
+	else
+	{
+		CloseCurrentUI(); 
+
+		if (!ConstructionMenuWidget && ConstructionMenuWidgetClass)
+		{
+			ConstructionMenuWidget = CreateWidget<UUserWidget>(this, ConstructionMenuWidgetClass);
+		}
+
+		if (ConstructionMenuWidget)
+		{
+			ConstructionMenuWidget->AddToViewport();
+		}
+	}
+}
+
+void ABVPlayerController::CloseCurrentUI()
+{
+	// Close Shop
+	if (ShopWidget && ShopWidget->IsInViewport())
+	{
+		CloseShopUI();
+	}
+
+	// Close Inventory
+	if (InventoryWidget && InventoryWidget->IsInViewport())
+	{
+		InventoryWidget->RemoveFromParent();
+	}
+
+	// Close Construction Menu
+	if (ConstructionMenuWidget && ConstructionMenuWidget->IsInViewport())
+	{
+		ConstructionMenuWidget->RemoveFromParent();
+	}
+
+	// Exit Ghost Building Mode if active
+	if (bIsConstructionMode)
+	{
+		ExitConstructionMode();
+}		
 }
 
 void ABVPlayerController::OnBuildClick()

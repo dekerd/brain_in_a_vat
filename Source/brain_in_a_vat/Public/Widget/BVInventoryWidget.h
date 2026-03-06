@@ -29,6 +29,9 @@ protected:
 	UPROPERTY(meta = (BindWidget))
 	TObjectPtr<class UWrapBox> InventoryGrid;
 
+	UPROPERTY(meta = (BindWidget))
+	TObjectPtr<class UWrapBox> EquippedGrid;
+
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<class UBVInventorySlotWidget> SlotWidgetClass;
 	

@@ -10,23 +10,30 @@
 void UBVInventoryWidget::RefreshInventory()
 {
 
-	FString DebugMsg = FString::Printf(TEXT("RefreshInventory has been called!"));
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
-	
-	if (!InventoryGrid || !SlotWidgetClass) return;
+	if (!InventoryGrid || !EquippedGrid || !SlotWidgetClass) return;
 
 	InventoryGrid->ClearChildren();
+	EquippedGrid->ClearChildren();
 
 	AMainCharacter* Character = Cast<AMainCharacter>(GetOwningPlayerPawn());
 	if (!Character) return;
 
-	const TArray<UBVItemData*>& Items = Character->GetInventoryItems();
-	for (UBVItemData* Item : Items)
+	for (UBVItemData* Item : Character->GetEquippedWeapons())
 	{
 		UBVInventorySlotWidget* NewSlot = CreateWidget<UBVInventorySlotWidget>(this, SlotWidgetClass);
 		if (NewSlot)
 		{
-			NewSlot->UpdateSlot(Item);
+			NewSlot->UpdateSlot(Item, true);
+			EquippedGrid->AddChildToWrapBox(NewSlot);
+		}
+	}
+
+	for (UBVItemData* Item : Character->GetInventoryItems())
+	{
+		UBVInventorySlotWidget* NewSlot = CreateWidget<UBVInventorySlotWidget>(this, SlotWidgetClass);
+		if (NewSlot)
+		{
+			NewSlot->UpdateSlot(Item, false);
 			InventoryGrid->AddChildToWrapBox(NewSlot);
 		}
 	}
