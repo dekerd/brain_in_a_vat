@@ -228,6 +228,8 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 		bIsConstructionMode = false;
 		PendingBuildingClass = nullptr;
 
+		ExitConstructionMode();
+
 		if (CurrentGhostActor)
 		{
 			CurrentGhostActor->Destroy();
@@ -244,12 +246,6 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 			DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
 			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, DestLocation);
 
-			/* Move Sound
-			if (AMainCharacter* MainCharacter = Cast<AMainCharacter>(ControlledPawn))
-			{
-				MainCharacter->PlayRandomMoveSound();
-			}
-			*/
 		}
 	}
 }
@@ -342,7 +338,7 @@ void ABVPlayerController::ToggleInventoryUI()
 			InventoryWidget->AddToViewport();
 
 			FInputModeGameAndUI InputMode;
-			InputMode.SetWidgetToFocus(InventoryWidget->TakeWidget());
+			InputMode.SetHideCursorDuringCapture(false);
 			SetInputMode(InputMode);
 		}
 	}
@@ -409,6 +405,14 @@ void ABVPlayerController::OnBuildClick()
 		bIsMovingToBuild = true;
 		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, TargetBuildLocation);
 		bIsConstructionMode = false;
+
+		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
+		{
+			if (BuildMappingContext)
+			{
+				Subsystem->RemoveMappingContext(BuildMappingContext);
+			}
+		}
 	}
 	else
 	{
@@ -531,26 +535,30 @@ void ABVPlayerController::OpenShopUI(ABVNPCBase* TargetNPC)
 {
 	if (ShopWidget && ShopWidget->IsInViewport()) return;
 
-	if (ShopWidgetClass)
+	if (!ShopWidget && ShopWidgetClass)
 	{
 		ShopWidget = CreateWidget<UUserWidget>(this, ShopWidgetClass);
-		if (ShopWidget)
-		{
-			UBVShopWidget* MyShopWidget = Cast<UBVShopWidget>(ShopWidget);
-			if (MyShopWidget)
-			{
-				MyShopWidget->InitShop(TargetNPC);
-			}
-			ShopWidget->AddToViewport();
-			
-	
-			// Inputs only make focus to the UI
-			FInputModeGameAndUI InputMode;
-			InputMode.SetWidgetToFocus(ShopWidget->TakeWidget());
-			SetInputMode(InputMode);
-			bShowMouseCursor = true;
-		}
 	}
+	
+	if (ShopWidget)
+	{
+		UBVShopWidget* MyShopWidget = Cast<UBVShopWidget>(ShopWidget);
+		if (MyShopWidget)
+		{
+			MyShopWidget->InitShop(TargetNPC);
+		}
+		
+		if (!ShopWidget->IsInViewport())
+		{
+			ShopWidget->AddToViewport();
+		}
+		
+		FInputModeGameAndUI InputMode;
+		InputMode.SetWidgetToFocus(ShopWidget->TakeWidget());
+		SetInputMode(InputMode);
+		bShowMouseCursor = true;
+	}
+	
 }
 
 void ABVPlayerController::CloseShopUI()
