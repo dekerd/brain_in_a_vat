@@ -3,6 +3,7 @@
 
 #include "Widget/BVShopSlotWidget.h"
 
+#include "BVPlayerController.h"
 #include "BVPlayerState.h"
 #include "MainCharacter.h"
 #include "Components/Button.h"
@@ -66,6 +67,10 @@ void UBVShopSlotWidget::OnItemButtonClicked()
 		}
 		else
 		{
+			if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(GetOwningPlayer()))
+			{
+				BVPC->PlayAnnouncerVoice(EBVAnnouncerEvent::NotEnoughGold);
+			}
 			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Not enough gold!"));
 		}
 	}

@@ -288,25 +288,16 @@ void ABVPlayerController::SelectObject()
 	}
 }
 
-void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass)
-{
-	CurrentBuildingClass = InBuildingClass;
-}
-
 void ABVPlayerController::OnBuildKeyPressed()
 {
-	FString DebugMsg = FString::Printf(TEXT("B key is pressed!!"));
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, DebugMsg);
-
 	if (bIsConstructionMode)
 	{
 		ExitConstructionMode();
 	}
 	else
 	{
-		EnterConstructionMode();
+		ToggleConstructionMenuUI();
 	}
-	
 }
 
 void ABVPlayerController::ToggleInventoryUI()
@@ -346,10 +337,17 @@ void ABVPlayerController::ToggleInventoryUI()
 
 void ABVPlayerController::ToggleConstructionMenuUI()
 {
+	// Close Widget if opened
 	if (ConstructionMenuWidget && ConstructionMenuWidget->IsInViewport())
 	{
 		ConstructionMenuWidget->RemoveFromParent();
+		
+		FInputModeGameAndUI InputMode;
+		InputMode.SetHideCursorDuringCapture(false);
+		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+		SetInputMode(InputMode);
 	}
+	// Open widget if closed
 	else
 	{
 		CloseCurrentUI(); 
@@ -362,6 +360,10 @@ void ABVPlayerController::ToggleConstructionMenuUI()
 		if (ConstructionMenuWidget)
 		{
 			ConstructionMenuWidget->AddToViewport();
+			
+			FInputModeGameAndUI InputMode;
+			InputMode.SetWidgetToFocus(ConstructionMenuWidget->TakeWidget());
+			SetInputMode(InputMode);
 		}
 	}
 }
@@ -413,6 +415,8 @@ void ABVPlayerController::OnBuildClick()
 				Subsystem->RemoveMappingContext(BuildMappingContext);
 			}
 		}
+
+		PlayAnnouncerVoice(EBVAnnouncerEvent::ConstructionStarted);
 	}
 	else
 	{
@@ -421,10 +425,16 @@ void ABVPlayerController::OnBuildClick()
 	
 }
 
-void ABVPlayerController::EnterConstructionMode()
+void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass)
 {
 	if (!DefaultBuildingClass || !GhostActorClass) return;
 
+	if (ConstructionMenuWidget && ConstructionMenuWidget->IsInViewport())
+	{
+		ToggleConstructionMenuUI();
+	}
+
+	CurrentBuildingClass = InBuildingClass;
 	bIsConstructionMode = true;
 
 	// Switching to Building IMC
@@ -451,13 +461,11 @@ void ABVPlayerController::EnterConstructionMode()
 			{
 				UStaticMeshComponent* BuildingMeshComp = BuildingCDO->FindComponentByClass<UStaticMeshComponent>();
 				USceneComponent* SceneRootComp = BuildingCDO->FindComponentByClass<USceneComponent>();
-
 				UStaticMeshComponent* GhostMeshComp = CurrentGhostActor->FindComponentByClass<UStaticMeshComponent>();
 				
 				if (BuildingMeshComp && SceneRootComp && GhostMeshComp)
 				{
 					CurrentGhostActor->InitGhost(BuildingMeshComp->GetStaticMesh(), GhostMaterialBase);
-
 					CurrentGhostActor->SetActorScale3D(SceneRootComp->GetRelativeScale3D());
 					GhostMeshComp->SetRelativeTransform(BuildingMeshComp->GetRelativeTransform());
 				}
@@ -504,6 +512,29 @@ void ABVPlayerController::UpdateGhostLocation()
 		
 		bCanBuild = true;
 		CurrentGhostActor->SetValid(bCanBuild);
+	}
+}
+
+void ABVPlayerController::PlayAnnouncerVoice(EBVAnnouncerEvent EventType)
+{
+	// Check cooltime if the event is BaseUnderAttack
+	if (EventType == EBVAnnouncerEvent::BaseUnderAttack)
+	{
+		float CurrentTime = GetWorld()->GetTimeSeconds();
+		if (CurrentTime - LastBaseAttackVoiceTime < BaseAttackVoiceCooldown)
+		{
+			return; 
+		}
+		LastBaseAttackVoiceTime = CurrentTime;
+	}
+
+	// If not, then find the appropriate announcer sound according to the event type
+	if (TObjectPtr<USoundBase>* FoundSound = AnnouncerVoices.Find(EventType))
+	{
+		if (*FoundSound)
+		{
+			UGameplayStatics::PlaySound2D(this, *FoundSound, AnnouncerVolumeMultiplier);
+		}
 	}
 }
 

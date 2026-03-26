@@ -3,6 +3,7 @@
 
 #include "Buildings/BVConstructionSite.h"
 
+#include "BVPlayerController.h"
 #include "Buildings/BVBuildingBase.h"
 #include "Collision/BVCollision.h"
 #include "Components/BoxComponent.h"
@@ -247,6 +248,7 @@ void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildi
 	}
 
 	bIsBuilding = true;
+
 }
 
 void ABVConstructionSite::SpawnRealBuilding()
@@ -284,6 +286,14 @@ void ABVConstructionSite::SpawnRealBuilding()
 		{
 			float SetupMaxHealth = NewBuilding->GetCombatAttributeSet()->GetMaxHealth();
 			NewBuilding->GetCombatAttributeSet()->SetHealth(SetupMaxHealth * FinalHealthRatio);
+		}
+
+		if (TeamId.GetId() == 1) 
+		{
+			if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController()))
+			{
+				BVPC->PlayAnnouncerVoice(EBVAnnouncerEvent::ConstructionCompleted);
+			}
 		}
 	}
 

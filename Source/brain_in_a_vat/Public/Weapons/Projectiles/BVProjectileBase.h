@@ -68,5 +68,8 @@ protected:
 		bool bFromSweep,
 		const FHitResult& SweepResult
 		);
+
+	UFUNCTION()
+	void OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
 	
 };

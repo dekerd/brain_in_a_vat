@@ -93,16 +93,16 @@ public:
 	const FUnitStats* GetStats() const;
 	void ApplyInitStatFromDataTable();
 
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
+	FText BuildingName = FText::FromString(TEXT("Default Building Name"));
+
 protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	UDataTable* StatTable;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	FName StatRowName;
-
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
-	FText BuildingName = FText::FromString(TEXT("Default Building Name"));
-
+	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> InitStatsEffect;
 
@@ -138,7 +138,16 @@ public:
 	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
 	class UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
 
+// Damage Detecting
+protected:
+
+	float PreviousHealthRatio = 1.0f;
+	
+	UFUNCTION()
+	void HandleHealthChangedForAudio(float NewHealthRatio);
+
 // Unit Spawning
+public:
 	UPROPERTY(EditAnywhere, Category = "Spawn Unit")
 	TSubclassOf<class ABVAutobotBase> SpawnUnitClass;
 

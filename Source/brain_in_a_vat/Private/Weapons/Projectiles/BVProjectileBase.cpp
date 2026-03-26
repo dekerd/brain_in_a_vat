@@ -36,6 +36,8 @@ ABVProjectileBase::ABVProjectileBase()
 	CollisionComponent->SetNotifyRigidBodyCollision(true); // For OnHit
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVProjectileBase::OnCollisionBeginOverlap);
+	CollisionComponent->OnComponentHit.AddDynamic(this, &ABVProjectileBase::OnCollisionHit);
+	InitialLifeSpan = 5.0f;
 
 	// Mesh
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
@@ -142,5 +144,21 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 	
 	Destroy();
 
+}
+
+void ABVProjectileBase::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
+	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
+{
+	if (HitEffect)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, GetActorLocation(), GetActorRotation());
+	}
+
+	if (HitSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
+	}
+    
+	Destroy();
 }
 

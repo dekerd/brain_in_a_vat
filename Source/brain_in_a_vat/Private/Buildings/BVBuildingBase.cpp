@@ -2,6 +2,8 @@
 
 
 #include "Buildings/BVBuildingBase.h"
+
+#include "BVPlayerController.h"
 #include "Characters/BVAutobotBase.h"
 #include "Components/WidgetComponent.h"
 #include "Components/BoxComponent.h"
@@ -139,6 +141,22 @@ UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
 	return ASC;	
 }
 
+void ABVBuildingBase::HandleHealthChangedForAudio(float NewHealthRatio)
+{
+	if (NewHealthRatio < PreviousHealthRatio)
+	{
+		if (TeamType == EBVTeam::Player)
+		{
+			if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController()))
+			{
+				BVPC->PlayAnnouncerVoice(EBVAnnouncerEvent::BaseUnderAttack);
+			}
+		}
+	}
+	
+	PreviousHealthRatio = NewHealthRatio;
+}
+
 void ABVBuildingBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
@@ -180,6 +198,8 @@ void ABVBuildingBase::BeginPlay()
 		if (HealthComponent)
 		{
 			HealthComponent->InitFromGAS(ASC, CombatAttributes);
+			HealthComponent->OnHealthChangedUI.AddDynamic(this, &ABVBuildingBase::HandleHealthChangedForAudio);
+			PreviousHealthRatio = HealthComponent->GetHealthRatio();
 		}
 
 		ApplyInitStatFromDataTable();

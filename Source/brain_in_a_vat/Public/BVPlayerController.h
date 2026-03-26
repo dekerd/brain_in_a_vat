@@ -6,6 +6,7 @@
 #include "GenericTeamAgentInterface.h"
 #include "InputActionValue.h"
 #include "GameFramework/PlayerController.h"
+#include "Headers/BVAnnouncerEvent.h"
 #include "BVPlayerController.generated.h"
 
 class ABVNPCBase;
@@ -113,6 +114,10 @@ private:
 
 // Construction Mode
 public:
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build")
+	TArray<TSubclassOf<class ABVBuildingBase>> AvailableBuildings;
+	
 	UFUNCTION(BlueprintCallable, Category = "Build")
 	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass);
 
@@ -141,8 +146,7 @@ protected:
 	bool bIsMovingToBuild = false;
 	bool bIsConstructionMode = false; 
 	bool bCanBuild = false;
-
-	void EnterConstructionMode();
+	
 	void ExitConstructionMode();
 	void UpdateGhostLocation();
 	
@@ -156,6 +160,23 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Audio")
 	float HoverSoundVolume = 0.5f;
+
+// Announce Sound
+public:
+	UFUNCTION(BlueprintCallable, Category = "Audio|Announcer")
+	void PlayAnnouncerVoice(EBVAnnouncerEvent EventType);
+
+protected:
+	UPROPERTY(EditDefaultsOnly, Category = "Audio|Announcer")
+	TMap<EBVAnnouncerEvent, TObjectPtr<class USoundBase>> AnnouncerVoices;
+	
+	float LastBaseAttackVoiceTime = -100.0f;
+	
+	UPROPERTY(EditDefaultsOnly, Category = "Audio|Announcer")
+	float BaseAttackVoiceCooldown = 10.0f;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Audio|Announcer")
+	float AnnouncerVolumeMultiplier = 2.0f;
 
 // <--------------- Widgets --------------->
 // Main HUD Widget
