@@ -119,7 +119,7 @@ public:
 	TArray<TSubclassOf<class ABVBuildingBase>> AvailableBuildings;
 	
 	UFUNCTION(BlueprintCallable, Category = "Build")
-	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass);
+	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime);
 
 protected:
 	UPROPERTY()
@@ -139,6 +139,9 @@ protected:
 
 	UPROPERTY()
 	TSubclassOf<ABVBuildingBase> PendingBuildingClass;
+
+	UPROPERTY()
+	float PendingConstructionTime;
 
 	float StartToBuildRange = 100.0f;
 	FVector TargetBuildLocation;

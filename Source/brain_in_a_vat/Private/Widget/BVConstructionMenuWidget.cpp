@@ -5,6 +5,7 @@
 #include "Widget/BVConstructionMenuSlotWidget.h"
 #include "Components/WrapBox.h"
 #include "BVPlayerController.h"
+#include "Buildings/BuildingMenuData.h"
 #include "Buildings/BVBuildingBase.h"
 
 void UBVConstructionMenuWidget::NativeConstruct()
@@ -13,19 +14,28 @@ void UBVConstructionMenuWidget::NativeConstruct()
 
 	if (!BuildingSlotContainer || !SlotWidgetClass) return;
 
+	if (BuildingSlotContainer->HasAnyChildren())
+	{
+		return;
+	}
+
 	BuildingSlotContainer->ClearChildren();
 
-	ABVPlayerController* PC = Cast<ABVPlayerController>(GetOwningPlayer());
-	if (PC)
+	if (BuildingMenuDataTable)
 	{
-		for (TSubclassOf<ABVBuildingBase> BuildingClass : PC->AvailableBuildings)
+		static const FString ContextString(TEXT("Building Menu Context"));
+		TArray<FBuildingMenuData*> MenuRows;
+		
+		BuildingMenuDataTable->GetAllRows<FBuildingMenuData>(ContextString, MenuRows);
+
+		for (FBuildingMenuData* RowData : MenuRows)
 		{
-			if (BuildingClass)
+			if (RowData && RowData->BuildingClass)
 			{
 				UBVConstructionMenuSlotWidget* NewSlot = CreateWidget<UBVConstructionMenuSlotWidget>(this, SlotWidgetClass);
 				if (NewSlot)
 				{
-					NewSlot->InitSlot(BuildingClass);
+					NewSlot->InitSlot(*RowData);
 					BuildingSlotContainer->AddChildToWrapBox(NewSlot);
 				}
 			}

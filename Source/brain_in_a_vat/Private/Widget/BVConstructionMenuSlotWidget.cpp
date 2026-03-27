@@ -2,7 +2,6 @@
 
 
 #include "Widget/BVConstructionMenuSlotWidget.h"
-
 #include "BVPlayerController.h"
 #include "BVPlayerState.h"
 #include "Buildings/BVBuildingBase.h"
@@ -12,29 +11,24 @@
 
 class ABVPlayerState;
 
-void UBVConstructionMenuSlotWidget::InitSlot(TSubclassOf<ABVBuildingBase> InBuildingClass)
+void UBVConstructionMenuSlotWidget::InitSlot(const FBuildingMenuData& InMenuData)
 {
-	if (!InBuildingClass) return;
+	SlotData = InMenuData;
+	BuildingClass = InMenuData.BuildingClass;
 	
-	BuildingClass = InBuildingClass;
-	
-	ABVBuildingBase* BuildingCDO = BuildingClass->GetDefaultObject<ABVBuildingBase>();
-	if (BuildingCDO)
+	if (BuildingIcon && SlotData.BuildingIcon)
 	{
-		if (BuildingIcon && BuildingCDO->BuildingIcon)
-		{
-			BuildingIcon->SetBrushFromTexture(BuildingCDO->BuildingIcon);
-		}
-		
-		if (BuildingNameText)
-		{
-			BuildingNameText->SetText(BuildingCDO->BuildingName); 
-		}
+		BuildingIcon->SetBrushFromTexture(SlotData.BuildingIcon);
+	}
+	
+	if (BuildingNameText)
+	{
+		BuildingNameText->SetText(SlotData.BuildingName); 
+	}
 
-		if (CostText)
-		{
-			CostText->SetText(FText::AsNumber(BuildingCDO->ConstructionCost));
-		}
+	if (CostText)
+	{
+		CostText->SetText(FText::AsNumber(SlotData.ConstructionCost));
 	}
 }
 
@@ -59,11 +53,11 @@ void UBVConstructionMenuSlotWidget::OnButtonClicked()
 	if (PS)
 	{
 		ABVBuildingBase* BuildingCDO = BuildingClass->GetDefaultObject<ABVBuildingBase>();
-		if (BuildingCDO && PS->GetGold() >= BuildingCDO->ConstructionCost)
+		if (BuildingCDO && PS->GetGold() >= SlotData.ConstructionCost)
 		{
 
-			PS->AddRewards(-BuildingCDO->ConstructionCost, 0.0f);
-			PC->EnterConstructionMode(BuildingClass);
+			PS->AddRewards(-SlotData.ConstructionCost, 0.0f);
+			PC->EnterConstructionMode(BuildingClass, SlotData.ConstructionTime);
 		}
 		else
 		{

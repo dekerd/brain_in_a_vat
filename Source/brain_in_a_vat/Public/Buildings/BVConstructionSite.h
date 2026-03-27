@@ -63,7 +63,7 @@ public:
 
 	FGenericTeamId TeamId;
 
-	void InitConstruction(TSubclassOf<ABVBuildingBase> InBuildingClass, FGenericTeamId InTeamId);
+	void InitConstruction(TSubclassOf<ABVBuildingBase> InBuildingClass, FGenericTeamId InTeamId, float InConstructionTime);
 	
 	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamId) override { TeamId = NewTeamId; }
 	virtual FGenericTeamId GetGenericTeamId() const override { return TeamId; }

@@ -8,6 +8,7 @@
 
 class UWrapBox;
 class UBVConstructionMenuSlotWidget;
+class UDataTable;
 
 /**
  * 
@@ -25,4 +26,7 @@ protected:
 
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UBVConstructionMenuSlotWidget> SlotWidgetClass;
+
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	TObjectPtr<UDataTable> BuildingMenuDataTable;
 };

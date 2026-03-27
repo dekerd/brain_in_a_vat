@@ -13,6 +13,8 @@
 #include "Buildings/BVBuildingGhost.h"
 #include "Characters/BVNPCBase.h"
 #include "Components/AudioComponent.h"
+#include "Components/BoxComponent.h"
+#include "Components/CapsuleComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
@@ -106,7 +108,7 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 				AMainCharacter* MainCharacter = Cast<AMainCharacter>(ControlledPawn);
 				if (MainCharacter && PendingBuildingClass)
 				{
-					MainCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass);
+					MainCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass, PendingConstructionTime);
 				}
 
 				if (CurrentGhostActor)
@@ -302,9 +304,21 @@ void ABVPlayerController::OnBuildKeyPressed()
 
 void ABVPlayerController::ToggleInventoryUI()
 {
-	if (InventoryWidget && InventoryWidget->IsInViewport())
+	if (!InventoryWidget && InventoryWidgetClass)
 	{
-		InventoryWidget->RemoveFromParent();
+		InventoryWidget = CreateWidget<UUserWidget>(this, InventoryWidgetClass);
+		if (InventoryWidget)
+		{
+			InventoryWidget->AddToViewport();
+			InventoryWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+
+	if (!InventoryWidget) return;
+	
+	if (InventoryWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		InventoryWidget->SetVisibility(ESlateVisibility::Hidden);
 
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
@@ -315,84 +329,80 @@ void ABVPlayerController::ToggleInventoryUI()
 	{
 		CloseCurrentUI(); 
 
-		if (!InventoryWidget && InventoryWidgetClass)
+		if (UBVInventoryWidget* InvWidget = Cast<UBVInventoryWidget>(InventoryWidget))
 		{
-			InventoryWidget = CreateWidget<UUserWidget>(this, InventoryWidgetClass);
+			InvWidget->RefreshInventory();
 		}
 
-		if (InventoryWidget)
-		{
-			if (UBVInventoryWidget* InvWidget = Cast<UBVInventoryWidget>(InventoryWidget))
-			{
-				InvWidget->RefreshInventory();
-			}
-			InventoryWidget->AddToViewport();
+		InventoryWidget->SetVisibility(ESlateVisibility::Visible);
 
-			FInputModeGameAndUI InputMode;
-			InputMode.SetHideCursorDuringCapture(false);
-			SetInputMode(InputMode);
-		}
+		FInputModeGameAndUI InputMode;
+		InputMode.SetHideCursorDuringCapture(false);
+		SetInputMode(InputMode);
 	}
 }
 
 void ABVPlayerController::ToggleConstructionMenuUI()
 {
-	// Close Widget if opened
-	if (ConstructionMenuWidget && ConstructionMenuWidget->IsInViewport())
+
+	if (!ConstructionMenuWidget && ConstructionMenuWidgetClass)
 	{
-		ConstructionMenuWidget->RemoveFromParent();
+		ConstructionMenuWidget = CreateWidget<UUserWidget>(this, ConstructionMenuWidgetClass);
+		if (ConstructionMenuWidget)
+		{
+			ConstructionMenuWidget->AddToViewport();
+			ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden); 
+		}
+	}
+
+	if (!ConstructionMenuWidget) return;
+
+	if (ConstructionMenuWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden);
 		
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		SetInputMode(InputMode);
 	}
-	// Open widget if closed
 	else
 	{
-		CloseCurrentUI(); 
+		CloseCurrentUI();
 
-		if (!ConstructionMenuWidget && ConstructionMenuWidgetClass)
-		{
-			ConstructionMenuWidget = CreateWidget<UUserWidget>(this, ConstructionMenuWidgetClass);
-		}
-
-		if (ConstructionMenuWidget)
-		{
-			ConstructionMenuWidget->AddToViewport();
-			
-			FInputModeGameAndUI InputMode;
-			InputMode.SetWidgetToFocus(ConstructionMenuWidget->TakeWidget());
-			SetInputMode(InputMode);
-		}
+		ConstructionMenuWidget->SetVisibility(ESlateVisibility::Visible);
+		
+		FInputModeGameAndUI InputMode;
+		InputMode.SetWidgetToFocus(ConstructionMenuWidget->TakeWidget());
+		SetInputMode(InputMode);
 	}
 }
 
 void ABVPlayerController::CloseCurrentUI()
 {
 	// Close Shop
-	if (ShopWidget && ShopWidget->IsInViewport())
+	if (ShopWidget && ShopWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		CloseShopUI();
 	}
 
 	// Close Inventory
-	if (InventoryWidget && InventoryWidget->IsInViewport())
+	if (InventoryWidget && InventoryWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
-		InventoryWidget->RemoveFromParent();
+		InventoryWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
 	// Close Construction Menu
-	if (ConstructionMenuWidget && ConstructionMenuWidget->IsInViewport())
+	if (ConstructionMenuWidget && ConstructionMenuWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
-		ConstructionMenuWidget->RemoveFromParent();
+		ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
 	// Exit Ghost Building Mode if active
 	if (bIsConstructionMode)
 	{
 		ExitConstructionMode();
-}		
+	}	
 }
 
 void ABVPlayerController::OnBuildClick()
@@ -400,9 +410,33 @@ void ABVPlayerController::OnBuildClick()
 	// This function is called under Build IMC
 	if (bCanBuild && CurrentGhostActor)
 	{
-		PendingBuildingClass = DefaultBuildingClass;
+		PendingBuildingClass = CurrentBuildingClass;
 		TargetBuildLocation = CurrentGhostActor->GetActorLocation();
 
+		float BuildingRadius = 50.0f; 
+		if (PendingBuildingClass)
+		{
+			if (ABVBuildingBase* BuildingCDO = PendingBuildingClass->GetDefaultObject<ABVBuildingBase>())
+			{
+				if (UBoxComponent* BoxComp = BuildingCDO->GetBoxComponent())
+				{
+					BuildingRadius = FMath::Max(BoxComp->GetUnscaledBoxExtent().X, BoxComp->GetUnscaledBoxExtent().Y);
+				}
+			}
+		}
+
+		float CharacterRadius = 42.0f;
+		if (AMainCharacter* MyChar = Cast<AMainCharacter>(GetPawn()))
+		{
+			if (UCapsuleComponent* Capsule = MyChar->GetCapsuleComponent())
+			{
+				CharacterRadius = Capsule->GetScaledCapsuleRadius();
+			}
+		}
+
+		StartToBuildRange = BuildingRadius + CharacterRadius + 100.0f; // Padding
+
+		
 		// Moving to construction site
 		bIsMovingToBuild = true;
 		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, TargetBuildLocation);
@@ -425,7 +459,7 @@ void ABVPlayerController::OnBuildClick()
 	
 }
 
-void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass)
+void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime)
 {
 	if (!DefaultBuildingClass || !GhostActorClass) return;
 
@@ -435,6 +469,7 @@ void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InB
 	}
 
 	CurrentBuildingClass = InBuildingClass;
+	PendingConstructionTime = InConstructionTime;
 	bIsConstructionMode = true;
 
 	// Switching to Building IMC
@@ -564,39 +599,41 @@ void ABVPlayerController::ShowGoldReward(int32 Amount, FVector WorldLocation)
 
 void ABVPlayerController::OpenShopUI(ABVNPCBase* TargetNPC)
 {
-	if (ShopWidget && ShopWidget->IsInViewport()) return;
-
 	if (!ShopWidget && ShopWidgetClass)
 	{
 		ShopWidget = CreateWidget<UUserWidget>(this, ShopWidgetClass);
+		if (ShopWidget)
+		{
+			ShopWidget->AddToViewport();
+			ShopWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
 	}
 	
 	if (ShopWidget)
 	{
+		if (ShopWidget->GetVisibility() == ESlateVisibility::Visible) return;
+
+		CloseCurrentUI(); 
 		UBVShopWidget* MyShopWidget = Cast<UBVShopWidget>(ShopWidget);
 		if (MyShopWidget)
 		{
 			MyShopWidget->InitShop(TargetNPC);
 		}
 		
-		if (!ShopWidget->IsInViewport())
-		{
-			ShopWidget->AddToViewport();
-		}
+		ShopWidget->SetVisibility(ESlateVisibility::Visible);
 		
 		FInputModeGameAndUI InputMode;
 		InputMode.SetWidgetToFocus(ShopWidget->TakeWidget());
 		SetInputMode(InputMode);
 		bShowMouseCursor = true;
 	}
-	
 }
 
 void ABVPlayerController::CloseShopUI()
 {
-	if (ShopWidget && ShopWidget->IsInViewport())
+	if (ShopWidget && ShopWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
-		ShopWidget->RemoveFromParent(); 
+		ShopWidget->SetVisibility(ESlateVisibility::Hidden); 
 		
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);

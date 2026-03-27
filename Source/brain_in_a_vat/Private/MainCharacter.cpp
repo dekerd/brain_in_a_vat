@@ -299,7 +299,7 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 	
 }
 
-void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass)
+void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass, float InConstructionTime)
 {
 	
 	if (!BuildingClass || !ConstructionSiteClass) return;
@@ -315,7 +315,7 @@ void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBu
 	
 	if (Site)
 	{
-		Site->InitConstruction(BuildingClass, GetGenericTeamId());
+		Site->InitConstruction(BuildingClass, GetGenericTeamId(), InConstructionTime);
 		UGameplayStatics::FinishSpawningActor(Site, SpawnTransform);
 	}
 }

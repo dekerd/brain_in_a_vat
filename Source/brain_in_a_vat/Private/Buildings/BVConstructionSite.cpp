@@ -174,10 +174,11 @@ void ABVConstructionSite::Tick(float DeltaTime)
 	}
 }
 
-void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildingClass, FGenericTeamId InTeamId)
+void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildingClass, FGenericTeamId InTeamId, float InConstructionTime)
 {
 	TargetBuildingClass = InBuildingClass;
 	TeamId = InTeamId;
+	ConstructionTime = InConstructionTime;
 
 	if (TargetBuildingClass)
 	{

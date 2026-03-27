@@ -4,6 +4,7 @@
 
 #include "CoreMinimal.h"
 #include "Blueprint/UserWidget.h"
+#include "Buildings/BuildingMenuData.h"
 #include "BVConstructionMenuSlotWidget.generated.h"
 
 class ABVBuildingBase;
@@ -21,7 +22,7 @@ class BRAIN_IN_A_VAT_API UBVConstructionMenuSlotWidget : public UUserWidget
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Build")
-	void InitSlot(TSubclassOf<ABVBuildingBase> InBuildingClass);
+	void InitSlot(const FBuildingMenuData& InMenuData);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -43,4 +44,7 @@ protected:
 
 	UPROPERTY()
 	TSubclassOf<ABVBuildingBase> BuildingClass;
+
+	UPROPERTY()
+	FBuildingMenuData SlotData;
 };

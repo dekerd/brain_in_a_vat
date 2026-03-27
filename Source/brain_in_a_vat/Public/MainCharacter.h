@@ -128,7 +128,7 @@ protected:
 // Construct Buildings
 public:
 	UFUNCTION(BlueprintCallable, Category = "Building")
-	void ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass);
+	void ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass, float InConstructionTime);
 
 	UPROPERTY(EditDefaultsOnly, Category = "Construction")
 	TSubclassOf<class ABVConstructionSite> ConstructionSiteClass;
