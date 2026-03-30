@@ -16,6 +16,7 @@ class UBoxComponent;
 class USphereComponent;
 class UWidgetComponent;
 class UUBVBuildingOverheadWidget;
+class ABVLane;
 
 UCLASS()
 class BRAIN_IN_A_VAT_API ABVBuildingBase :  public AActor,
@@ -153,6 +154,10 @@ public:
 
 	UPROPERTY(EditAnywhere, Category = "Spawn Unit")
 	float RespawnInterval = 10.f;
+
+	// 스폰된 유닛에게 전달할 레인. 설정 시 유닛이 레인 직선으로 합류 후 적 베이스로 이동한다.
+	UPROPERTY(EditAnywhere, Category = "Spawn Unit")
+	TObjectPtr<ABVLane> AssignedLane;
 	float ElapsedTime;
 
 	UFUNCTION()

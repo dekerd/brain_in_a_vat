@@ -47,4 +47,19 @@ private:
 
 	UPROPERTY()
 	TObjectPtr<AActor> MoveTarget;
+
+	// 레인 이동 관련
+	UPROPERTY()
+	TObjectPtr<class ABVLane> AssignedLane;
+
+	// true: 이미 레인에 합류 완료 → 적 베이스로 직진
+	bool bOnLane = false;
+
+	FTimerHandle LaneCheckTimerHandle;
+
+	// 주기적으로 레인 합류 여부를 확인하고, 합류 시 목적지를 적 베이스로 전환
+	UFUNCTION()
+	void CheckLaneArrival();
+
+	void SetTargetLocationFromLaneState(APawn* ControllingPawn);
 };

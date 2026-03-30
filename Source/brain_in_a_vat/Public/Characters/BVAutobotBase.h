@@ -14,6 +14,7 @@
 class UWidgetComponent;
 class UBVHealthComponent;
 class UDataTable;
+class ABVLane;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttackFinished, AAIController*, AIController);
 
@@ -136,6 +137,12 @@ protected:
 	float FadeElapsed = 0.0f;
 	float FadeDuration = 2.0f;
 	bool bIsFading = false;
+
+// Lane System
+public:
+	// 스폰한 건물이 설정해주는 레인 참조 (없으면 기존 TargetBuilding 방식으로 동작)
+	UPROPERTY()
+	TObjectPtr<ABVLane> AssignedLane;
 
 // Sound Effects
 public:
