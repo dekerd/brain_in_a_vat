@@ -72,7 +72,7 @@ void ABVPlayerController::BeginPlay()
 
 			float SoundDuration = BGMPlaylist[RandomIndex]->GetDuration();
 			float RandomStartTime = FMath::FRandRange(0.f, SoundDuration / 2);
-			BGMComponent = UGameplayStatics::SpawnSound2D(this, BGMPlaylist[RandomIndex],Volume, 1.0f, 0.0f, nullptr, true);
+			BGMComponent = UGameplayStatics::CreateSound2D(this, BGMPlaylist[RandomIndex], Volume, 1.0f, 0.0f, nullptr, true);
 			if (BGMComponent)
 			{
 				BGMComponent->FadeIn(10.0f, 0.5f, RandomStartTime);

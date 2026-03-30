@@ -158,6 +158,12 @@ public:
 	UFUNCTION()
 	void SpawnUnit();
 	FTimerHandle SpawnTimerHandle;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Unit")
+	TObjectPtr<AActor> FriendlyMainBase;
+	
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Unit")
+	TObjectPtr<AActor> EnemyMainBase;
 
 // Destruction
 public:
@@ -181,5 +187,6 @@ public:
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	bool bIsHovered = false;
+	
 	
 };
