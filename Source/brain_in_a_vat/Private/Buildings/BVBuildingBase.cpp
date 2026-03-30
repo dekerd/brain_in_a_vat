@@ -2,6 +2,7 @@
 
 
 #include "Buildings/BVBuildingBase.h"
+#include "AI/BVLane.h"
 
 #include "BVPlayerController.h"
 #include "Characters/BVAutobotBase.h"
@@ -309,7 +310,10 @@ void ABVBuildingBase::SpawnUnit()
 
 	if (NewSpawnUnit)
 	{
-		// Initialization
+		if (AssignedLane)
+		{
+			NewSpawnUnit->AssignedLane = AssignedLane;
+		}
 	}
 }
 

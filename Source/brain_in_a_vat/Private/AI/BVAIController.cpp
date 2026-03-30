@@ -2,6 +2,7 @@
 
 
 #include "AI/BVAIController.h"
+#include "AI/BVLane.h"
 #include "EngineUtils.h"
 #include "Characters/BVAutobotBase.h"
 #include "BehaviorTree/BehaviorTree.h"
@@ -83,10 +84,45 @@ ETeamAttitude::Type ABVAIController::GetTeamAttitudeTowards(const AActor& Other)
 void ABVAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
-	// Generate the blackboard and the behavior tree
 	RunAI();
 
-	// Find the target building
+	BlackboardComponent = GetBlackboardComponent();
+
+	// 팀 정보 설정
+	if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(InPawn))
+	{
+		SetGenericTeamId(TeamAgent->GetGenericTeamId());
+	}
+
+	// 레인이 할당된 유닛: 수선의 발 → 적 베이스 2단계 이동
+	AssignedLane = nullptr;
+	bOnLane = false;
+
+	if (ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(InPawn))
+	{
+		if (Autobot->AssignedLane)
+		{
+			AssignedLane = Autobot->AssignedLane;
+
+			if (BlackboardComponent)
+			{
+				const FVector Foot = AssignedLane->GetPerpendicularFoot(InPawn->GetActorLocation());
+				BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), Foot);
+			}
+
+			// 레인 합류 여부를 주기적으로 확인
+			GetWorldTimerManager().SetTimer(
+				LaneCheckTimerHandle,
+				this,
+				&ABVAIController::CheckLaneArrival,
+				0.5f,
+				true
+			);
+			return;
+		}
+	}
+
+	// 레인 없는 유닛: 기존 TargetBuilding 태그 방식
 	MoveTarget = nullptr;
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
@@ -97,13 +133,11 @@ void ABVAIController::OnPossess(APawn* InPawn)
 		}
 	}
 
-	if (MoveTarget == nullptr)
+	if (!MoveTarget)
 	{
 		UE_LOG(LogTemp, Warning, TEXT("No Target Cube found"))
 	}
 
-	// Set Blackboard Value
-	BlackboardComponent = GetBlackboardComponent();
 	if (BlackboardComponent)
 	{
 		if (IsValid(MoveTarget))
@@ -115,12 +149,52 @@ void ABVAIController::OnPossess(APawn* InPawn)
 			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), InPawn->GetActorLocation());
 		}
 	}
-	
+}
 
-	// Set Team Information
-	if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(InPawn))
+void ABVAIController::CheckLaneArrival()
+{
+	if (bOnLane)
 	{
-		SetGenericTeamId(TeamAgent->GetGenericTeamId());
+		GetWorldTimerManager().ClearTimer(LaneCheckTimerHandle);
+		return;
+	}
+
+	APawn* Pawn = GetPawn();
+	if (!Pawn || !AssignedLane) return;
+
+	const FVector Foot = AssignedLane->GetPerpendicularFoot(Pawn->GetActorLocation());
+	const float DistToFoot = FVector::Dist2D(Pawn->GetActorLocation(), Foot);
+
+	// 수선의 발 100 유닛 이내면 레인 합류로 판정
+	if (DistToFoot < 100.f)
+	{
+		bOnLane = true;
+		GetWorldTimerManager().ClearTimer(LaneCheckTimerHandle);
+
+		if (BlackboardComponent && !BlackboardComponent->GetValueAsBool(TEXT("bIsAttacking")))
+		{
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), AssignedLane->GetEnemyBaseLocation());
+		}
+	}
+}
+
+void ABVAIController::SetTargetLocationFromLaneState(APawn* ControllingPawn)
+{
+	if (!AssignedLane || !BlackboardComponent) return;
+
+	if (bOnLane)
+	{
+		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), AssignedLane->GetEnemyBaseLocation());
+	}
+	else
+	{
+		const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation());
+		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), Foot);
+
+		if (!GetWorldTimerManager().IsTimerActive(LaneCheckTimerHandle))
+		{
+			GetWorldTimerManager().SetTimer(LaneCheckTimerHandle, this, &ABVAIController::CheckLaneArrival, 0.5f, true);
+		}
 	}
 }
 
@@ -195,7 +269,12 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 		BlackboardComponent->SetValueAsObject(TEXT("AttackTargetActor"), nullptr);
 		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), false);
 
-		if (IsValid(MoveTarget))
+		if (AssignedLane)
+		{
+			// 레인 유닛: 합류 전이면 수선의 발, 합류 후면 적 베이스로 이동
+			SetTargetLocationFromLaneState(ControllingPawn);
+		}
+		else if (IsValid(MoveTarget))
 		{
 			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), MoveTarget->GetActorLocation());
 		}
