@@ -84,6 +84,7 @@ ETeamAttitude::Type ABVAIController::GetTeamAttitudeTowards(const AActor& Other)
 void ABVAIController::OnPossess(APawn* InPawn)
 {
 	Super::OnPossess(InPawn);
+	
 	RunAI();
 
 	BlackboardComponent = GetBlackboardComponent();
@@ -100,6 +101,8 @@ void ABVAIController::OnPossess(APawn* InPawn)
 
 	if (ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(InPawn))
 	{
+		
+		UE_LOG(LogTemp, Warning, TEXT("Autobot의 레인 할당 상태: %s"), Autobot->AssignedLane ? TEXT("성공!") : TEXT("실패(NULL)"));
 		if (Autobot->AssignedLane)
 		{
 			AssignedLane = Autobot->AssignedLane;
@@ -159,11 +162,11 @@ void ABVAIController::CheckLaneArrival()
 		return;
 	}
 
-	APawn* Pawn = GetPawn();
-	if (!Pawn || !AssignedLane) return;
+	APawn* ControllingPawn = GetPawn();
+	if (!ControllingPawn || !AssignedLane) return;
 
-	const FVector Foot = AssignedLane->GetPerpendicularFoot(Pawn->GetActorLocation());
-	const float DistToFoot = FVector::Dist2D(Pawn->GetActorLocation(), Foot);
+	const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation());
+	const float DistToFoot = FVector::Dist2D(ControllingPawn->GetActorLocation(), Foot);
 
 	// 수선의 발 100 유닛 이내면 레인 합류로 판정
 	if (DistToFoot < 100.f)
@@ -173,7 +176,19 @@ void ABVAIController::CheckLaneArrival()
 
 		if (BlackboardComponent && !BlackboardComponent->GetValueAsBool(TEXT("bIsAttacking")))
 		{
-			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), AssignedLane->GetEnemyBaseLocation());
+			// Default destination
+			FVector FinalDestination = AssignedLane->GetEnemyBaseLocation();
+
+			// Check Team ID and reverse destination if hostile
+			if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(ControllingPawn))
+			{
+				if (TeamAgent->GetGenericTeamId() != FGenericTeamId(0))
+				{
+					FinalDestination = AssignedLane->GetFriendlyBaseLocation(); 
+				}
+			}
+
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), FinalDestination);
 		}
 	}
 }

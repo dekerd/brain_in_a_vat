@@ -17,6 +17,8 @@ class BRAIN_IN_A_VAT_API ABVLane : public AActor
 
 public:
 	ABVLane();
+	
+	virtual void Tick(float DeltaTime) override;
 
 	// 유닛 위치에서 레인 직선에 내린 수선의 발을 반환 (Z는 유닛 높이 유지)
 	FVector GetPerpendicularFoot(const FVector& UnitPos) const;

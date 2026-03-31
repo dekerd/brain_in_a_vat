@@ -4,8 +4,30 @@
 
 ABVLane::ABVLane()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 }
+
+void ABVLane::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	FVector HeightOffset(0.f, 0.f, 50.f);
+
+	if (FriendlyBase && EnemyBase)
+	{
+		DrawDebugLine(
+			GetWorld(),
+			FriendlyBase->GetActorLocation() + HeightOffset,
+			EnemyBase->GetActorLocation() + HeightOffset,
+			FColor::Cyan,
+			true,
+			-1.f,
+			0,
+			20.f
+		);
+	}
+}
+
 
 FVector ABVLane::GetPerpendicularFoot(const FVector& UnitPos) const
 {

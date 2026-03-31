@@ -141,7 +141,7 @@ protected:
 // Lane System
 public:
 	// 스폰한 건물이 설정해주는 레인 참조 (없으면 기존 TargetBuilding 방식으로 동작)
-	UPROPERTY()
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lane", meta = (ExposeOnSpawn = "true"))
 	TObjectPtr<ABVLane> AssignedLane;
 
 // Sound Effects

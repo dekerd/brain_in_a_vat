@@ -292,28 +292,31 @@ void ABVBuildingBase::SpawnUnit()
 		float BoxRadius = BoxComponent->GetScaledBoxExtent().X;
 		SpawnDistance = BoxRadius + 100.f;
 	}
-
+	
 	FVector SpawnLocation = GetActorLocation() + (GetActorForwardVector() * SpawnDistance);
 	SpawnLocation.Z += 50.0f;
 	const FRotator SpawnRotation = FRotator::ZeroRotator;
+	FTransform SpawnTransform(SpawnRotation, SpawnLocation);
 
-	FActorSpawnParameters Params;
-	Params.Owner = this;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
-	
-	ABVAutobotBase* NewSpawnUnit = World->SpawnActor<ABVAutobotBase>(
+	// 1. 지연 스폰 (태어나기 직전, 메모리에만 올라간 일시정지 상태)
+	ABVAutobotBase* NewSpawnUnit = World->SpawnActorDeferred<ABVAutobotBase>(
 		SpawnUnitClass,
-		SpawnLocation,
-		SpawnRotation,
-		Params
-		);
+		SpawnTransform,
+		this,
+		nullptr,
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn
+	);
 
 	if (NewSpawnUnit)
 	{
+		// 2. AI가 빙의하기 전에, 유닛의 호주머니에 레인 정보를 쏙 넣어줍니다!
 		if (AssignedLane)
 		{
 			NewSpawnUnit->AssignedLane = AssignedLane;
 		}
+
+		// 3. 자 이제 멈춰뒀던 스폰을 완료해라! (이때 AI가 빙의하면서 레인 정보를 성공적으로 읽음)
+		NewSpawnUnit->FinishSpawning(SpawnTransform);
 	}
 }
 
