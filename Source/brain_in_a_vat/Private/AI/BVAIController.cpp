@@ -169,7 +169,7 @@ void ABVAIController::CheckLaneArrival()
 	const float DistToFoot = FVector::Dist2D(ControllingPawn->GetActorLocation(), Foot);
 
 	// 수선의 발 100 유닛 이내면 레인 합류로 판정
-	if (DistToFoot < 100.f)
+	if (DistToFoot < 500.f)
 	{
 		bOnLane = true;
 		GetWorldTimerManager().ClearTimer(LaneCheckTimerHandle);
@@ -199,7 +199,17 @@ void ABVAIController::SetTargetLocationFromLaneState(APawn* ControllingPawn)
 
 	if (bOnLane)
 	{
-		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), AssignedLane->GetEnemyBaseLocation());
+		FVector FinalDestination = AssignedLane->GetEnemyBaseLocation();
+		
+		if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(ControllingPawn))
+		{
+			if (TeamAgent->GetGenericTeamId() != FGenericTeamId(0))
+			{
+				FinalDestination = AssignedLane->GetFriendlyBaseLocation();
+			}
+		}
+
+		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), FinalDestination);
 	}
 	else
 	{
