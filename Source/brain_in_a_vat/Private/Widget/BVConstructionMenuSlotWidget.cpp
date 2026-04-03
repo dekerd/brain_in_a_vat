@@ -8,28 +8,23 @@
 #include "Components/Button.h"
 #include "Components/Image.h"
 #include "Components/TextBlock.h"
+#include "Data/BVBuildingData.h"
 
 class ABVPlayerState;
 
-void UBVConstructionMenuSlotWidget::InitSlot(const FBuildingMenuData& InMenuData)
+void UBVConstructionMenuSlotWidget::InitSlot(UBVBuildingData* InData)
 {
-	SlotData = InMenuData;
-	BuildingClass = InMenuData.BuildingClass;
+	SlotData = InData;
+	BuildingClass = InData->BuildingClass;
 	
-	if (BuildingIcon && SlotData.BuildingIcon)
-	{
-		BuildingIcon->SetBrushFromTexture(SlotData.BuildingIcon);
-	}
+	if (BuildingIcon && SlotData->BuildingIcon)
+		BuildingIcon->SetBrushFromTexture(SlotData->BuildingIcon);
 	
 	if (BuildingNameText)
-	{
-		BuildingNameText->SetText(SlotData.BuildingName); 
-	}
+		BuildingNameText->SetText(SlotData->BuildingName); 
 
 	if (CostText)
-	{
-		CostText->SetText(FText::AsNumber(SlotData.ConstructionCost));
-	}
+		CostText->SetText(FText::AsNumber(SlotData->ConstructionCost));
 }
 
 void UBVConstructionMenuSlotWidget::NativeConstruct()
@@ -53,11 +48,11 @@ void UBVConstructionMenuSlotWidget::OnButtonClicked()
 	if (PS)
 	{
 		ABVBuildingBase* BuildingCDO = BuildingClass->GetDefaultObject<ABVBuildingBase>();
-		if (BuildingCDO && PS->GetGold() >= SlotData.ConstructionCost)
+		if (BuildingCDO && PS->GetGold() >= SlotData->ConstructionCost)
 		{
 
-			PS->AddRewards(-SlotData.ConstructionCost, 0.0f);
-			PC->EnterConstructionMode(BuildingClass, SlotData.ConstructionTime);
+			PS->AddRewards(-SlotData->ConstructionCost, 0.0f);
+			PC->EnterConstructionMode(BuildingClass, SlotData->ConstructionTime);
 		}
 		else
 		{

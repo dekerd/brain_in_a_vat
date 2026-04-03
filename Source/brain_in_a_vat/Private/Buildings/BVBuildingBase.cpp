@@ -16,6 +16,7 @@
 #include "Perception/AISense_Sight.h"
 #include "Collision/BVCollision.h"
 #include "Components/BoxComponent.h"
+#include "Data/BVBuildingData.h"
 #include "Data/UnitStats.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/UBVBuildingOverheadWidget.h"
@@ -63,17 +64,7 @@ ABVBuildingBase::ABVBuildingBase()
 	// Health Component
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
 
-	
-
-	
-
 	// <--------------- Assets ----------------> //
-	// Unit Stats
-	static ConstructorHelpers::FObjectFinder<UDataTable> DT_UnitStats(TEXT("/Script/Engine.DataTable'/Game/Data/UnitStats.UnitStats'"));
-	if (DT_UnitStats.Succeeded())
-	{
-		StatTable = DT_UnitStats.Object;
-	}
 
 	static ConstructorHelpers::FClassFinder<UGameplayEffect> InitStatGEClass(TEXT("/Script/Engine.Blueprint'/Game/GAS/GE/GE_InitStat.GE_InitStat_C'"));
 	if (InitStatGEClass.Succeeded())
@@ -246,20 +237,13 @@ void ABVBuildingBase::BeginPlay()
 	
 }
 
-const FUnitStats* ABVBuildingBase::GetStats() const
-{
-	if (!StatTable || StatRowName.IsNone()) return nullptr;
-	return StatTable->FindRow<FUnitStats>(StatRowName, TEXT("StatLookup"));
-}
 
 void ABVBuildingBase::ApplyInitStatFromDataTable()
 {
 
-	if (!ASC) return;
-	if (!InitStatsEffect) return;
+	if (!ASC || !InitStatsEffect || !BuildingData) return;
 
-	const FUnitStats* Stats = GetStats();
-	if (!Stats) return;
+	BuildingName = BuildingData->BuildingName;
 
 	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
 	GEContext.AddSourceObject(this);
@@ -267,9 +251,9 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 	FGameplayEffectSpecHandle GESpec = ASC->MakeOutgoingSpec(InitStatsEffect, 1.f, GEContext);
 	if (!GESpec.IsValid()) return;
 
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), Stats->MaxHealth);
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), Stats->MaxHealth);
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), Stats->Damage);
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), BuildingData->MaxHealth);
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), BuildingData->MaxHealth);
+	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), BuildingData->Damage);
 	
 	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());
 	

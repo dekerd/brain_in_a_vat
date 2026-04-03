@@ -7,6 +7,7 @@
 #include "BVPlayerController.h"
 #include "Buildings/BuildingMenuData.h"
 #include "Buildings/BVBuildingBase.h"
+#include "Data/BVBuildingData.h"
 
 void UBVConstructionMenuWidget::NativeConstruct()
 {
@@ -21,23 +22,15 @@ void UBVConstructionMenuWidget::NativeConstruct()
 
 	BuildingSlotContainer->ClearChildren();
 
-	if (BuildingMenuDataTable)
+	for (UBVBuildingData* Data : AvailableBuildingsData)
 	{
-		static const FString ContextString(TEXT("Building Menu Context"));
-		TArray<FBuildingMenuData*> MenuRows;
-		
-		BuildingMenuDataTable->GetAllRows<FBuildingMenuData>(ContextString, MenuRows);
-
-		for (FBuildingMenuData* RowData : MenuRows)
+		if (Data && Data->BuildingClass)
 		{
-			if (RowData && RowData->BuildingClass)
+			UBVConstructionMenuSlotWidget* NewSlot = CreateWidget<UBVConstructionMenuSlotWidget>(this, SlotWidgetClass);
+			if (NewSlot)
 			{
-				UBVConstructionMenuSlotWidget* NewSlot = CreateWidget<UBVConstructionMenuSlotWidget>(this, SlotWidgetClass);
-				if (NewSlot)
-				{
-					NewSlot->InitSlot(*RowData);
-					BuildingSlotContainer->AddChildToWrapBox(NewSlot);
-				}
+				NewSlot->InitSlot(Data);
+				BuildingSlotContainer->AddChildToWrapBox(NewSlot);
 			}
 		}
 	}

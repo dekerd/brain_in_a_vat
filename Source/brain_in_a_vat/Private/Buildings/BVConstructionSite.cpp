@@ -13,6 +13,7 @@
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Perception/AISense_Sight.h"
 #include "Widget/BVConstructionWidget.h"
+#include "Data/BVBuildingData.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Perception/AISense_Sight.h"
 #include "Components/BVHealthComponent.h"
@@ -89,9 +90,10 @@ void ABVConstructionSite::BeginPlay()
 		if (TargetBuildingClass)
 		{
 			ABVBuildingBase* BuildingCDO = TargetBuildingClass->GetDefaultObject<ABVBuildingBase>();
-			if (BuildingCDO && BuildingCDO->GetStats())
+	
+			if (BuildingCDO && BuildingCDO->BuildingData)
 			{
-				MaxHealth = BuildingCDO->GetStats()->MaxHealth;
+				MaxHealth = BuildingCDO->BuildingData->MaxHealth;
 			}
 		}
 

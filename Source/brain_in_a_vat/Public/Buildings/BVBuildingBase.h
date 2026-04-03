@@ -8,7 +8,7 @@
 #include "AbilitySystemComponent.h"
 #include "GenericTeamAgentInterface.h"
 #include "Interface/BVDamageableInterface.h"
-#include "Data/UnitStats.h"
+#include "Data/BuildingStats.h"
 #include "Headers/BVTeam.h"
 #include "BVBuildingBase.generated.h"
 
@@ -89,21 +89,18 @@ protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<class UAIPerceptionStimuliSourceComponent> StimuliSourceComponent;
 
-// Stats
+// Building Stat Data
 public:
-	const FUnitStats* GetStats() const;
+	const FBuildingStats* GetBuildingStats() const;
 	void ApplyInitStatFromDataTable();
+
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
+	TObjectPtr<class UBVBuildingData> BuildingData;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
 	FText BuildingName = FText::FromString(TEXT("Default Building Name"));
 
 protected:
-	UPROPERTY(EditDefaultsOnly, Category = "Data")
-	UDataTable* StatTable;
-
-	UPROPERTY(EditDefaultsOnly, Category = "Data")
-	FName StatRowName;
-	
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "GAS")
 	TSubclassOf<class UGameplayEffect> InitStatsEffect;
 

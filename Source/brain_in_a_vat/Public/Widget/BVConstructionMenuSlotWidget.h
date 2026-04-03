@@ -22,7 +22,7 @@ class BRAIN_IN_A_VAT_API UBVConstructionMenuSlotWidget : public UUserWidget
 
 public:
 	UFUNCTION(BlueprintCallable, Category = "Build")
-	void InitSlot(const FBuildingMenuData& InMenuData);
+	void InitSlot(class UBVBuildingData* InData);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -46,5 +46,5 @@ protected:
 	TSubclassOf<ABVBuildingBase> BuildingClass;
 
 	UPROPERTY()
-	FBuildingMenuData SlotData;
+	TObjectPtr<class UBVBuildingData> SlotData;
 };

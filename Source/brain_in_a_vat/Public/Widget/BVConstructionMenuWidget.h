@@ -28,5 +28,5 @@ protected:
 	TSubclassOf<UBVConstructionMenuSlotWidget> SlotWidgetClass;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
-	TObjectPtr<UDataTable> BuildingMenuDataTable;
+	TArray<TObjectPtr<class UBVBuildingData>> AvailableBuildingsData;
 };
