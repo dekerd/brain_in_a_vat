@@ -16,6 +16,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/ShapeComponent.h"
+#include "Data/BVBuildingData.h"
 #include "Kismet/GameplayStatics.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
@@ -414,16 +415,9 @@ void ABVPlayerController::OnBuildClick()
 		TargetBuildLocation = CurrentGhostActor->GetActorLocation();
 
 		float BuildingRadius = 50.0f; 
-		if (PendingBuildingClass)
-		{
-			if (ABVBuildingBase* BuildingCDO = PendingBuildingClass->GetDefaultObject<ABVBuildingBase>())
-			{
-				if (UBoxComponent* BoxComp = BuildingCDO->GetBoxComponent())
-				{
-					BuildingRadius = FMath::Max(BoxComp->GetUnscaledBoxExtent().X, BoxComp->GetUnscaledBoxExtent().Y);
-				}
-			}
-		}
+		FVector Origin, Extent;
+		CurrentGhostActor->GetActorBounds(false, Origin, Extent);
+		BuildingRadius = FMath::Max(Extent.X, Extent.Y);
 
 		float CharacterRadius = 42.0f;
 		if (AMainCharacter* MyChar = Cast<AMainCharacter>(GetPawn()))
@@ -491,7 +485,8 @@ void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InB
 		if (CurrentGhostActor)
 		{
 			// 2. Add Ghost material to the spawned building
-			ABVBuildingBase* BuildingCDO = DefaultBuildingClass->GetDefaultObject<ABVBuildingBase>();
+			// 하드코딩 되어있던 DefaultBuildingClass를 지우고 InBuildingClass를 CDO로 가져옵니다.
+			ABVBuildingBase* BuildingCDO = InBuildingClass->GetDefaultObject<ABVBuildingBase>();
 			if (BuildingCDO)
 			{
 				UStaticMeshComponent* BuildingMeshComp = BuildingCDO->FindComponentByClass<UStaticMeshComponent>();
@@ -500,9 +495,25 @@ void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InB
 				
 				if (BuildingMeshComp && SceneRootComp && GhostMeshComp)
 				{
-					CurrentGhostActor->InitGhost(BuildingMeshComp->GetStaticMesh(), GhostMaterialBase);
-					CurrentGhostActor->SetActorScale3D(SceneRootComp->GetRelativeScale3D());
-					GhostMeshComp->SetRelativeTransform(BuildingMeshComp->GetRelativeTransform());
+					UStaticMesh* TargetMesh = nullptr;
+
+					// 데이터 에셋이 등록되어 있고, 메시 정보가 있다면 최우선으로 가져옵니다.
+					if (BuildingCDO->BuildingData && BuildingCDO->BuildingData->BuildingMesh)
+					{
+						TargetMesh = BuildingCDO->BuildingData->BuildingMesh;
+					}
+					else
+					{
+						// 만약 에셋이 비어있다면 컴포넌트의 기본 메시를 가져옵니다.
+						TargetMesh = BuildingMeshComp->GetStaticMesh();
+					}
+
+					if (TargetMesh)
+					{
+						CurrentGhostActor->InitGhost(TargetMesh, GhostMaterialBase);
+						CurrentGhostActor->SetActorScale3D(SceneRootComp->GetRelativeScale3D());
+						GhostMeshComp->SetRelativeTransform(BuildingMeshComp->GetRelativeTransform());
+					}
 				}
 			}
 		}

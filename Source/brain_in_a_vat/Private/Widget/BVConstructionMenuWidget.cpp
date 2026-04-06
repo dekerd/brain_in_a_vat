@@ -24,7 +24,7 @@ void UBVConstructionMenuWidget::NativeConstruct()
 
 	for (UBVBuildingData* Data : AvailableBuildingsData)
 	{
-		if (Data && Data->BuildingClass)
+		if (Data && Data->BuildingClass && Data->TeamType == EBVTeam::Player)
 		{
 			UBVConstructionMenuSlotWidget* NewSlot = CreateWidget<UBVConstructionMenuSlotWidget>(this, SlotWidgetClass);
 			if (NewSlot)

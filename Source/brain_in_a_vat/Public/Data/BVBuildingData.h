@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Headers/BVTeam.h"
 #include "BVBuildingData.generated.h"
 
 class ABVBuildingBase;
@@ -12,6 +13,11 @@ class BRAIN_IN_A_VAT_API UBVBuildingData : public UPrimaryDataAsset
 	GENERATED_BODY()
 
 public:
+
+	// Team Setting
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Team")
+	EBVTeam TeamType = EBVTeam::Neutral;
+	
 	// Construction & UI
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
 	FText BuildingName;

@@ -34,7 +34,7 @@ public:
 
 // Team Setting
 public:
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
+	UPROPERTY(BlueprintReadOnly, Category="Data", meta = (HideInDetailPanel))
 	EBVTeam TeamType = EBVTeam::Neutral;
 	
 	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
@@ -80,7 +80,7 @@ protected:
 	UPROPERTY(VisibleAnywhere)
 	TObjectPtr<class UBoxComponent> BoxComponent;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Components")
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<class UStaticMeshComponent> StaticMeshComponent;
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
@@ -97,7 +97,7 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
 	TObjectPtr<class UBVBuildingData> BuildingData;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category="Data")
+	UPROPERTY(BlueprintReadOnly, Category="Data", meta = (HideInDetailPanel))
 	FText BuildingName = FText::FromString(TEXT("Default Building Name"));
 
 protected:
@@ -106,13 +106,13 @@ protected:
 
 // Construction
 public:
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
+	UPROPERTY(BlueprintReadOnly, Category = "Construction", meta = (HideInDetailPanel))
 	int32 ConstructionCost = 100;
 
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Construction")
+	UPROPERTY(BlueprintReadOnly, Category = "Construction", meta = (HideInDetailPanel))
 	float ConstructionTime = 10.0f;
 
-	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Construction")
+	UPROPERTY(BlueprintReadOnly, Category = "Construction", meta = (HideInDetailPanel))
 	UTexture2D* BuildingIcon;
 
 protected:
@@ -177,6 +177,9 @@ public:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	TObjectPtr<UWidgetComponent> OverheadWidgetComponent;
+
+	UPROPERTY(EditDefaultsOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> OverheadWidgetClass;
 
 	UPROPERTY()
 	TObjectPtr<UUBVBuildingOverheadWidget> OverheadWidget;

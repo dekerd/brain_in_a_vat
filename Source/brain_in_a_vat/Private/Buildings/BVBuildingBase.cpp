@@ -153,6 +153,22 @@ void ABVBuildingBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
 
+	// 데이터 에셋이 할당되어 있고, 그 안에 건물 메시(BuildingMesh)가 설정되어 있다면
+	if (BuildingData && StaticMeshComponent)
+	{
+		if (BuildingData->BuildingMesh)
+		{
+			// 컴포넌트의 메시를 데이터 에셋의 메시로 자동 덮어쓰기
+			StaticMeshComponent->SetStaticMesh(BuildingData->BuildingMesh);
+		}
+		
+		// 아이콘 정보도 동기화 (UI에서 바로 쓸 수 있도록)
+		if (BuildingData->BuildingIcon)
+		{
+			BuildingIcon = BuildingData->BuildingIcon;
+		}
+	}
+
 	if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh() && BoxComponent)
 	{
 		FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
@@ -200,6 +216,11 @@ void ABVBuildingBase::BeginPlay()
 	// Add StimuliSource
 	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
 	StimuliSourceComponent->RegisterWithPerceptionSystem();
+
+	if (OverheadWidgetClass && OverheadWidgetComponent)
+	{
+		OverheadWidgetComponent->SetWidgetClass(OverheadWidgetClass);
+	}
 	
 	// Building Overhead Widget
 	if (OverheadWidgetComponent)
@@ -244,6 +265,11 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 	if (!ASC || !InitStatsEffect || !BuildingData) return;
 
 	BuildingName = BuildingData->BuildingName;
+
+	if (TeamType == EBVTeam::Neutral)
+	{
+		TeamType = BuildingData->TeamType;
+	}
 
 	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
 	GEContext.AddSourceObject(this);

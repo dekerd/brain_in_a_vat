@@ -7,6 +7,7 @@
 #include "Components/BVHealthComponent.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
+#include "Kismet/GameplayStatics.h"
 
 void UBVUnitOverheadWidget::SetUnitName(FText NewName)
 {
@@ -20,7 +21,7 @@ void UBVUnitOverheadWidget::InitWithHealthComponent(class UBVHealthComponent* In
 	InHealthComponent->OnHealthChangedUI.AddDynamic(this, &UBVUnitOverheadWidget::HandleHealthChanged);
 	HealthBar->SetPercent(InHealthComponent->GetHealthRatio());
 
-	APlayerController* PC = GetOwningPlayer();
+	APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 	AActor* TargetActor = InHealthComponent->GetOwner();
 
 	if (PC && TargetActor)
@@ -28,20 +29,20 @@ void UBVUnitOverheadWidget::InitWithHealthComponent(class UBVHealthComponent* In
 		if (IGenericTeamAgentInterface* PlayerAgent = Cast<IGenericTeamAgentInterface>(PC))
 		{
 			ETeamAttitude::Type Attitude = PlayerAgent->GetTeamAttitudeTowards(*TargetActor);
-			switch (Attitude)
+			
+			if (Attitude == ETeamAttitude::Friendly)
 			{
-			case ETeamAttitude::Friendly:
 				HealthBar->SetFillColorAndOpacity(FLinearColor::Green);
-				break;
-			case ETeamAttitude::Hostile:
+				this->SetVisibility(ESlateVisibility::HitTestInvisible);
+			}
+			else if (Attitude == ETeamAttitude::Hostile)
+			{
 				HealthBar->SetFillColorAndOpacity(FLinearColor::Red);
-				break;
-			case ETeamAttitude::Neutral:
-				HealthBar->SetFillColorAndOpacity(FLinearColor::Gray);
-				break;
-			default:
-				HealthBar->SetFillColorAndOpacity(FLinearColor::Gray);
-				break;
+				this->SetVisibility(ESlateVisibility::HitTestInvisible);
+			}
+			else
+			{
+				this->SetVisibility(ESlateVisibility::Hidden);
 			}
 		}
 	}

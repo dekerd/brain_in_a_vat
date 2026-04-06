@@ -18,6 +18,7 @@
 #include "Perception/AISense_Sight.h"
 #include "Components/BVHealthComponent.h"
 #include "GAS/CombatAttributeSet.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values
@@ -215,7 +216,8 @@ void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildi
 					{
 						GhostMeshComponent->SetStaticMesh(TargetMesh);
 						GhostMeshComponent->SetRelativeTransform(DefaultBuilding->GetStaticMeshComponent()->GetRelativeTransform());
-						GhostMeshComponent->SetRelativeScale3D(MeshComponent->GetRelativeScale3D());
+						FVector SlightlyLargerScale = MeshComponent->GetRelativeScale3D() * 1.025f;
+						GhostMeshComponent->SetRelativeScale3D(SlightlyLargerScale);
 
 						if (GhostMaterialBase)
 						{
@@ -266,15 +268,15 @@ void ABVConstructionSite::SpawnRealBuilding()
 		FinalHealthRatio = HealthComponent->GetHealthRatio();
 	}
 
-	FActorSpawnParameters Params;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-	Params.Owner = GetOwner();
+	FTransform SpawnTransform(GetActorRotation(), GetActorLocation());
 
-	ABVBuildingBase* NewBuilding = GetWorld()->SpawnActor<ABVBuildingBase>(
-		TargetBuildingClass,
-		GetActorLocation(),
-		GetActorRotation(),
-		Params);
+	ABVBuildingBase* NewBuilding = GetWorld()->SpawnActorDeferred<ABVBuildingBase>(
+			TargetBuildingClass,
+			SpawnTransform,
+			GetOwner(),
+			nullptr,
+			ESpawnActorCollisionHandlingMethod::AlwaysSpawn
+		);
 
 	if (NewBuilding)
 	{
@@ -283,6 +285,8 @@ void ABVConstructionSite::SpawnRealBuilding()
 		{
 			NewBuildingTeam->SetGenericTeamId(TeamId);
 		}
+
+		UGameplayStatics::FinishSpawningActor(NewBuilding, SpawnTransform);
 
 		// New Builing Health Value
 		if (NewBuilding->GetCombatAttributeSet())
