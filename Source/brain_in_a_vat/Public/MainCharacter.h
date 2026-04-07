@@ -29,12 +29,14 @@ protected:
 // Mesh and Collision Components
 	UPROPERTY(EditAnywhere, Category="Mesh")
 	TObjectPtr<class USkeletalMeshComponent> SkeletalMeshComponent;
-	
+
+	/*
 	UPROPERTY(VisibleAnywhere, Category="Camera")
 	TObjectPtr<class UCameraComponent> Camera;
 
 	UPROPERTY(VisibleAnywhere, Category="Camera")
 	TObjectPtr<class USpringArmComponent> CameraBoom;
+	*/
 
 // Team Setting
 public:

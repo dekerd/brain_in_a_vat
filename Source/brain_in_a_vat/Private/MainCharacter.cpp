@@ -67,7 +67,8 @@ AMainCharacter::AMainCharacter()
 	{
 		GetMesh()->SetAnimInstanceClass(AnimInstanceClassRef.Class);
 	}
-	
+
+	/*
 	// Camera
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
@@ -86,6 +87,7 @@ AMainCharacter::AMainCharacter()
 	Camera->SetupAttachment(CameraBoom, USpringArmComponent::SocketName);
 	Camera->bUsePawnControlRotation = false;
 	// Camera->ProjectionMode = ECameraProjectionMode::Orthographic;
+	*/
 
 	// Attack Sphere
 	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));

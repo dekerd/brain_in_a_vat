@@ -111,6 +111,26 @@ protected:
 private:
 	FGenericTeamId TeamID = FGenericTeamId(1);
 
+// Camera Moving
+public:
+	UPROPERTY(BlueprintReadWrite, Category = "Player")
+	TObjectPtr<class AMainCharacter> HeroCharacter;
+
+protected:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> CameraPanAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> CameraCenterAction;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> CameraZoomAction;
+
+	// 줌 함수
+	void OnCameraZoom(const FInputActionValue& Value);
+	void OnCameraPan(const FInputActionValue& Value);
+	void OnCameraCenterPressed();
+
 
 // Construction Mode
 public:

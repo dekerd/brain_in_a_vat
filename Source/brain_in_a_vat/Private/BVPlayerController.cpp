@@ -2,6 +2,8 @@
 
 
 #include "BVPlayerController.h"
+
+#include "BVRTSCameraPawn.h"
 #include "Characters/BVAutobotBase.h"
 #include "Collision/BVCollision.h"
 #include "InputMappingContext.h"
@@ -52,6 +54,13 @@ void ABVPlayerController::BeginPlay()
 	InputMode.SetHideCursorDuringCapture(false);
 	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 	SetInputMode(InputMode);
+
+	// Camera Move
+	HeroCharacter = Cast<AMainCharacter>(UGameplayStatics::GetActorOfClass(GetWorld(), AMainCharacter::StaticClass()));
+	if (HeroCharacter)
+	{
+		OnCameraCenterPressed();
+	}
 
 	// <------------------ Widgets ------------------>
 	// MainHUDWidget
@@ -181,6 +190,22 @@ void ABVPlayerController::SetupInputComponent()
 
 		if (UEnhancedInputComponent* EnhancedInputComponent = Cast<UEnhancedInputComponent>(InputComponent))
 		{
+			// [Camera Move]
+			if (CameraPanAction)
+			{
+				EnhancedInputComponent->BindAction(CameraPanAction, ETriggerEvent::Triggered, this, &ABVPlayerController::OnCameraPan);
+			}
+
+			if (CameraCenterAction)
+			{
+				EnhancedInputComponent->BindAction(CameraCenterAction, ETriggerEvent::Started, this, &ABVPlayerController::OnCameraCenterPressed);
+			}
+
+			if (CameraZoomAction)
+			{
+				EnhancedInputComponent->BindAction(CameraZoomAction, ETriggerEvent::Triggered, this, &ABVPlayerController::OnCameraZoom);
+			}
+			
 			// [Normal Mode]
 			if (MoveAction)
 			{
@@ -451,6 +476,31 @@ void ABVPlayerController::OnBuildClick()
 		// TODO : Can't Build there
 	}
 	
+}
+
+void ABVPlayerController::OnCameraZoom(const FInputActionValue& Value)
+{
+	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+	{
+		// 휠 스크롤 값(float)을 넘겨줍니다.
+		CamPawn->ZoomCamera(Value.Get<float>());
+	}
+}
+
+void ABVPlayerController::OnCameraPan(const FInputActionValue& Value)
+{
+	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+	{
+		CamPawn->MoveCamera(Value.Get<FVector2D>());
+	}
+}
+
+void ABVPlayerController::OnCameraCenterPressed()
+{
+	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+	{
+		CamPawn->CenterOnActor(HeroCharacter);
+	}
 }
 
 void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime)
