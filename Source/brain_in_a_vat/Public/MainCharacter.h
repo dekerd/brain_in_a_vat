@@ -30,13 +30,6 @@ protected:
 	UPROPERTY(EditAnywhere, Category="Mesh")
 	TObjectPtr<class USkeletalMeshComponent> SkeletalMeshComponent;
 
-	/*
-	UPROPERTY(VisibleAnywhere, Category="Camera")
-	TObjectPtr<class UCameraComponent> Camera;
-
-	UPROPERTY(VisibleAnywhere, Category="Camera")
-	TObjectPtr<class USpringArmComponent> CameraBoom;
-	*/
 
 // Team Setting
 public:
@@ -86,9 +79,14 @@ protected:
 
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category="Inventory")
 	TArray<float> WeaponCoolTime;
+	
+// Character Spec
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "FogOfWar")
+	float VisionRadius = 1500.0f;
 
 // Attack Setting
-
+protected:
 	UPROPERTY(EditAnywhere, Category="Combat")
 	TObjectPtr<class USphereComponent> AttackRangeSphere;
 

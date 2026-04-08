@@ -4,6 +4,7 @@
 #include "BVPlayerController.h"
 
 #include "BVRTSCameraPawn.h"
+#include "EngineUtils.h"
 #include "Characters/BVAutobotBase.h"
 #include "Collision/BVCollision.h"
 #include "InputMappingContext.h"
@@ -18,6 +19,7 @@
 #include "Components/BoxComponent.h"
 #include "Components/CapsuleComponent.h"
 #include "Components/ShapeComponent.h"
+#include "Components/WidgetComponent.h"
 #include "Data/BVBuildingData.h"
 #include "Engine/Canvas.h"
 #include "Kismet/GameplayStatics.h"
@@ -64,6 +66,15 @@ void ABVPlayerController::BeginPlay()
 		OnCameraCenterPressed();
 	}
 
+	// Fog of War
+	if (RT_Discovered)
+	{
+		UKismetRenderingLibrary::ClearRenderTarget2D(this, RT_Discovered, FLinearColor::Black);
+	}
+
+	// 0.15초마다 한 번씩(초당 약 6.6회) UpdateFogOfWar를 실행합니다.
+	// GetWorldTimerManager().SetTimer(FogTimerHandle, this, &ABVPlayerController::UpdateFogOfWar, 0.1f, true);
+	
 	// <------------------ Widgets ------------------>
 	// MainHUDWidget
 	if (MainHUDWidgetClass)
@@ -168,8 +179,9 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 	HoveredObject = NewHitActor;
 
-	// Fog of War
+	// Fog of war
 	UpdateFogOfWar();
+
 }
 
 ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
@@ -514,59 +526,150 @@ void ABVPlayerController::OnCameraCenterPressed()
 
 void ABVPlayerController::UpdateFogOfWar()
 {
-	// 에셋이 할당되지 않았거나 조종할 캐릭터가 없으면 리턴
-	if (!RT_Discovered || !RT_Vision || !VisionBrushMaterial || !HeroCharacter) return;
+	if (!RT_Discovered || !RT_Vision || !VisionBrushMaterial) return;
 
-	// 1. 현재 시야용 RT는 매 프레임 까맣게 초기화합니다. (탐사 기록용 RT는 초기화하지 않음!)
 	UKismetRenderingLibrary::ClearRenderTarget2D(this, RT_Vision, FLinearColor::Black);
 
-	UCanvas* Canvas;
-	FVector2D Size;
-	FDrawToRenderTargetContext ContextVision;
-	FDrawToRenderTargetContext ContextDiscovered;
-
-	// 캐릭터의 월드 위치를 가져옵니다.
-	FVector CharLoc = HeroCharacter->GetActorLocation();
-
-	// 월드 좌표를 렌더 타겟의 UV 좌표(0~1)를 거쳐 픽셀 좌표로 변환합니다.
-	// (MapCenter 기준으로 MapSize 크기만큼의 맵이라고 가정)
-	float NormalizedX = ((CharLoc.X - MapCenter.X) / MapSize) + 0.5f;
-	float NormalizedY = ((CharLoc.Y - MapCenter.Y) / MapSize) + 0.5f;
-
-	// 렌더 타겟에 그리기 시작
-	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, RT_Vision, Canvas, Size, ContextVision);
-	if (Canvas)
+	struct FVisionTarget
 	{
-		FVector2D DrawPos(NormalizedX * Size.X, NormalizedY * Size.Y);
-		
-		// 시야 반경 역시 맵 크기 비율에 맞춰 렌더 타겟 사이즈로 변환
-		float BrushSize = (VisionRadius / MapSize) * Size.X;
+		AActor* TargetActor;
+		float Radius;
+	};
 
-		// M_VisionBrush를 도장 찍듯이 그려줍니다.
-		Canvas->K2_DrawMaterial(
-			VisionBrushMaterial,
-			DrawPos - FVector2D(BrushSize / 2.0f), // 브러시의 중앙을 맞추기 위해 절반만큼 이동
-			FVector2D(BrushSize, BrushSize),
-			FVector2D::ZeroVector, FVector2D::UnitVector, 0.0f, FVector2D(0.5f, 0.5f)
-		);
+	TArray<FVisionTarget> VisionProviders;
+
+	if (HeroCharacter) VisionProviders.Add({HeroCharacter, HeroCharacter->VisionRadius});
+
+	for (TActorIterator<ABVBuildingBase> It(GetWorld()); It; ++It)
+	{
+		if (It->GetGenericTeamId() == GetGenericTeamId() && !It->bIsDestroyed)
+		{
+			float Rad = 5000.0f;
+			VisionProviders.Add({*It, Rad});
+		}
+	}
+
+	for (TActorIterator<ABVAutobotBase> It(GetWorld()); It; ++It)
+	{
+		if (It->GetGenericTeamId() == GetGenericTeamId() && !It->bIsDead)
+		{
+			VisionProviders.Add({*It, It->VisionRadius});
+		}
+	}
+
+	// 1. Draw to RT_Vision
+	UCanvas* CanvasVision;
+	FVector2D SizeVision;
+	FDrawToRenderTargetContext ContextVision;
+
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, RT_Vision, CanvasVision, SizeVision, ContextVision);
+	if (CanvasVision)
+	{
+		for (const FVisionTarget& Provider : VisionProviders)
+		{
+			FVector Loc = Provider.TargetActor->GetActorLocation();
+			float NormalizedX = ((Loc.X - MapCenter.X) / MapSize) + 0.5f;
+			float NormalizedY = ((Loc.Y - MapCenter.Y) / MapSize) + 0.5f; 
+			
+			float BrushSize = (Provider.Radius / MapSize) * SizeVision.X;
+			FVector2D BrushExtent(BrushSize, BrushSize);
+			FVector2D BrushOffset(BrushSize / 2.0f, BrushSize / 2.0f);
+
+			FVector2D DrawPos(NormalizedX * SizeVision.X, NormalizedY * SizeVision.Y);
+			FVector2D FinalPos = DrawPos - BrushOffset;
+
+			CanvasVision->K2_DrawMaterial(
+				VisionBrushMaterial, FinalPos, BrushExtent,
+				FVector2D::ZeroVector, FVector2D::UnitVector, 0.0f, FVector2D(0.5f, 0.5f)
+			);
+		}
 	}
 	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, ContextVision);
 
-	// 동일한 방식으로 탐사 기록용 RT에도 그려줍니다. (단, 여긴 초기화를 안 하므로 누적됩니다)
-	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, RT_Discovered, Canvas, Size, ContextDiscovered);
-	if (Canvas)
-	{
-		FVector2D DrawPos(NormalizedX * Size.X, NormalizedY * Size.Y);
-		float BrushSize = (VisionRadius / MapSize) * Size.X;
+	// 2. Draw to RT_Discovered
+	UCanvas* CanvasDiscovered;
+	FVector2D SizeDiscovered;
+	FDrawToRenderTargetContext ContextDiscovered;
 
-		Canvas->K2_DrawMaterial(
-			VisionBrushMaterial,
-			DrawPos - FVector2D(BrushSize / 2.0f),
-			FVector2D(BrushSize, BrushSize),
-			FVector2D::ZeroVector, FVector2D::UnitVector, 0.0f, FVector2D(0.5f, 0.5f)
-		);
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, RT_Discovered, CanvasDiscovered, SizeDiscovered, ContextDiscovered);
+	if (CanvasDiscovered)
+	{
+		for (const FVisionTarget& Provider : VisionProviders)
+		{
+			FVector Loc = Provider.TargetActor->GetActorLocation();
+			float NormalizedX = ((Loc.X - MapCenter.X) / MapSize) + 0.5f;
+			float NormalizedY = ((Loc.Y - MapCenter.Y) / MapSize) + 0.5f; 
+			
+			float BrushSize = (Provider.Radius / MapSize) * SizeDiscovered.X;
+			FVector2D BrushExtent(BrushSize, BrushSize);
+			FVector2D BrushOffset(BrushSize / 2.0f, BrushSize / 2.0f);
+
+			FVector2D DrawPos(NormalizedX * SizeDiscovered.X, NormalizedY * SizeDiscovered.Y);
+			FVector2D FinalPos = DrawPos - BrushOffset;
+
+			CanvasDiscovered->K2_DrawMaterial(
+				VisionBrushMaterial, FinalPos, BrushExtent,
+				FVector2D::ZeroVector, FVector2D::UnitVector, 0.0f, FVector2D(0.5f, 0.5f)
+			);
+		}
 	}
 	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, ContextDiscovered);
+
+	// 적 건물 숨기기
+	for (TActorIterator<ABVBuildingBase> It(GetWorld()); It; ++It)
+	{
+		// 아군이 아닌 '적(Hostile)' 건물만 검사합니다.
+		if (It->GetGenericTeamId() != GetGenericTeamId() && !It->bIsDestroyed)
+		{
+			bool bIsVisible = false;
+
+			// 모든 아군의 시야 반경과 적 건물의 거리를 비교
+			for (const FVisionTarget& Provider : VisionProviders)
+			{
+				float Distance = FVector::Distance(It->GetActorLocation(), Provider.TargetActor->GetActorLocation());
+				if (Distance <= Provider.Radius)
+				{
+					bIsVisible = true; // 단 한 명의 아군이라도 보고 있다면 시야 확보!
+					break;
+				}
+			}
+
+			// 위젯 끄기/켜기
+			if (It->OverheadWidgetComponent)
+			{
+				It->OverheadWidgetComponent->SetVisibility(bIsVisible);
+			}
+			It->SetActorHiddenInGame(!bIsVisible); 
+		}
+	}
+
+	// 적 유닛 숨기기
+	for (TActorIterator<ABVAutobotBase> It(GetWorld()); It; ++It)
+	{
+		// 아군이 아닌 '적(Hostile)' 유닛만 검사합니다.
+		if (It->GetGenericTeamId() != GetGenericTeamId() && !It->bIsDead)
+		{
+			bool bIsVisible = false;
+
+			for (const FVisionTarget& Provider : VisionProviders)
+			{
+				float Distance = FVector::Distance(It->GetActorLocation(), Provider.TargetActor->GetActorLocation());
+				if (Distance <= Provider.Radius)
+				{
+					bIsVisible = true;
+					break;
+				}
+			}
+
+			// 위젯 끄기/켜기
+			if (It->OverheadWidgetComponent)
+			{
+				It->OverheadWidgetComponent->SetVisibility(bIsVisible);
+			}
+			
+			It->SetActorHiddenInGame(!bIsVisible); 
+		}
+	}
 }
 
 void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime)

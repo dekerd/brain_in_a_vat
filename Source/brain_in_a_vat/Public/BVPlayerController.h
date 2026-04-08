@@ -159,7 +159,10 @@ public:
 
 	// 시야 반경
 	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
-	float VisionRadius = 1500.0f; 
+	float VisionRadius = 1500.0f;
+
+protected:
+	FTimerHandle FogTimerHandle;
 
 private:
 	void UpdateFogOfWar();

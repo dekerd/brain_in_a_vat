@@ -47,18 +47,6 @@ public:
 	FText UnitName = FText::FromString(TEXT("Default Unit Name"));
 protected:
 
-// Widgets
-/*
-public:
-	UPROPERTY()
-	UWidgetComponent* UnitNameWidgetComponent;
-
-	UPROPERTY()
-	TSubclassOf<UUserWidget> UnitNameWidgetClass;
-*/
-	
-protected:
-
 // Mouse-hovering effect
 public:
 	virtual void SetHovered_Implementation(bool bInHovered) override;

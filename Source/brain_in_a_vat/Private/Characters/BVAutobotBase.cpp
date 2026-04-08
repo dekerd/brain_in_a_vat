@@ -2,7 +2,6 @@
 
 
 #include "Characters/BVAutobotBase.h"
-
 #include "AI/BVAIController.h"
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GAS/CombatAttributeSet.h"
@@ -20,6 +19,7 @@
 #include "Kismet/KismetSystemLibrary.h"
 #include "Widget/BVHealthBarWidget.h"
 #include "BVPlayerController.h"
+#include "Data/BVUnitData.h"
 #include "Widget/BVUnitOverheadWidget.h"
 
 
@@ -58,13 +58,6 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->bUseRVOAvoidance = true;
 	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
 
-	// Unit Stats
-	static ConstructorHelpers::FObjectFinder<UDataTable> DT_UnitStats(TEXT("/Script/Engine.DataTable'/Game/Data/UnitStats.UnitStats'"));
-	if (DT_UnitStats.Succeeded())
-	{
-		UnitStatTable = DT_UnitStats.Object;
-	}
-
 	// HealthComponent
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
 
@@ -97,6 +90,26 @@ ABVAutobotBase::ABVAutobotBase()
 		DamageEffect = DamageGEClass.Class;
 	}
 
+}
+
+void ABVAutobotBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// 에디터 뷰포트에서 UnitData가 할당되어 있다면 메쉬와 애니메이션을 즉시 적용!
+	if (UnitData)
+	{
+		if (UnitData->UnitMesh)
+		{
+			GetMesh()->SetSkeletalMeshAsset(UnitData->UnitMesh);
+		}
+
+		if (UnitData->AnimClass)
+		{
+			GetMesh()->SetAnimInstanceClass(UnitData->AnimClass);
+		}
+	}
+	
 }
 
 
@@ -134,8 +147,8 @@ void ABVAutobotBase::BeginPlay()
 			HealthComponent->InitFromGAS(ASC, CombatAttributes);
 		}
 
-		// Initialize GAS stats from DataTable
-		ApplyInitStatFromDataTable();
+		// Initialize GAS stats from DataAsset
+		ApplyInitStatFromDataAsset();
 		
 	}
 
@@ -156,7 +169,14 @@ void ABVAutobotBase::BeginPlay()
 		{
 			if (UBVUnitOverheadWidget* OverheadWidget = Cast<UBVUnitOverheadWidget>(UserWidget))
 			{
-				OverheadWidget->SetUnitName(UnitName);
+				if (UnitData)
+				{
+					OverheadWidget->SetUnitName(FText::FromName(UnitData->UnitName));
+				}
+				else
+				{
+					OverheadWidget->SetUnitName(FText::FromString(TEXT("Unknown")));
+				}
 				OverheadWidget->InitWithHealthComponent(HealthComponent);
 			}
 		}
@@ -250,35 +270,41 @@ bool ABVAutobotBase::IsDestroyed_Implementation() const
 	return bIsDead;
 }
 
-const FUnitStats* ABVAutobotBase::GetUnitStats() const
+void ABVAutobotBase::ApplyInitStatFromDataAsset()
 {
-	if (!UnitStatTable || UnitStatRowName.IsNone()) return nullptr;
+	if (!ASC || !InitStatsEffect || !UnitData) return;
 
-	return UnitStatTable->FindRow<FUnitStats>(UnitStatRowName, TEXT("UnitStatLookup"));
-}
+	if (UnitData->UnitMesh)
+	{
+		GetMesh()->SetSkeletalMeshAsset(UnitData->UnitMesh);
+	}
 
-void ABVAutobotBase::ApplyInitStatFromDataTable()
-{
+	if (UnitData->AnimClass)
+	{
+		GetMesh()->SetAnimInstanceClass(UnitData->AnimClass);
+	}
 
-	if (!ASC) return;
-	if (!InitStatsEffect) return;
-
-
-	
-	const FUnitStats* UnitStats = GetUnitStats();
-	if (!UnitStats) return;
+	VisionRadius = UnitData->VisionRadius;
+	AttackMontage = UnitData->AttackMontage;
+	DeathMontage  = UnitData->DeathMontage;
 
 	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
-	GEContext.AddSourceObject(this);
-	
-	FGameplayEffectSpecHandle GESpec = ASC->MakeOutgoingSpec(InitStatsEffect, 1.f, GEContext);
-	if (!GESpec.IsValid()) return;
+	GEContext.AddInstigator(this, this);
 
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), UnitStats->MaxHealth);
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), UnitStats->MaxHealth);
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), UnitStats->Damage);
-
-	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());
+	FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(InitStatsEffect, 1.0f, GEContext);
+	if (SpecHandle.IsValid())
+	{
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.MaxHealth")), UnitData->MaxHealth);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.HealthRegen")), UnitData->HealthRegen);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.MaxMana")), UnitData->MaxMana);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.ManaRegen")), UnitData->ManaRegen);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), UnitData->Damage);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Defence")), UnitData->Defence);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.AttackSpeed")), UnitData->AttackSpeed);
+		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.AttackRange")), UnitData->AttackRange);
+		
+		ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
+	}
 	
 }
 
@@ -292,7 +318,7 @@ void ABVAutobotBase::Attack()
 	
 	if (AnimInstance && !AnimInstance->Montage_IsPlaying(AttackMontage))
 	{
-		AnimInstance->Montage_Play(AttackMontage, AttackSpeed);
+		AnimInstance->Montage_Play(AttackMontage, GetAttackSpeed());
 	}
 	
 }
@@ -359,14 +385,12 @@ void ABVAutobotBase::Dead()
 		if (PC->GetTeamAttitudeTowards(*this) == ETeamAttitude::Hostile)
 		{
 			ABVPlayerState* PS = PC->GetPlayerState<ABVPlayerState>();
-			const FUnitStats* Stats = GetUnitStats();
-
-			if (PS && Stats)
+			if (PS && UnitData)
 			{
 				FVector PopupLocation = GetActorLocation() + FVector(0.f, 0.f, 100.f);
 
-				PC->ShowGoldReward(Stats->GoldReward, PopupLocation);
-				PS->AddRewards(Stats->GoldReward, Stats->ExpReward);
+				PC->ShowGoldReward(UnitData->GoldReward, PopupLocation);
+				PS->AddRewards(UnitData->GoldReward, UnitData->ExpReward);
 			}
 		}
 	}
@@ -430,13 +454,11 @@ void ABVAutobotBase::ApplyDamageToTarget(AActor* TargetActor)
 	FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(DamageEffect, 1.f, ContextHandle);
 	if (!SpecHandle.IsValid()) return;
 
-	const float AttackDamage = CombatAttributes->GetAttackDamage();
+	const float Damage = CombatAttributes->GetDamage();
 
-	SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -AttackDamage);
+	SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -Damage);
 
 	ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-
-	UE_LOG(LogTemp, Log, TEXT("%s attacks %s for %.1f damage"), *GetName(), *TargetActor->GetName(), AttackDamage);
 	
 }
 
