@@ -108,6 +108,7 @@ void ABVRTSCameraPawn::CenterOnActor(AActor* TargetActor)
 	{
 		TargetToFollow = TargetActor;
 		bIsTracking = true;
+		SetActorLocation(TargetActor->GetActorLocation());
 	}
 }
 

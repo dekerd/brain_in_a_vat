@@ -9,25 +9,6 @@
 
 ABVGameModeBase::ABVGameModeBase()
 {
-	//DefaultPawnClass = AMainCharacter::StaticClass();
-	//PlayerControllerClass = ABVPlayerController::StaticClass();
-	static ConstructorHelpers::FClassFinder<ABVPlayerController> PlayerControllerClassRef(TEXT("/Script/Engine.Blueprint'/Game/PlayerController/BP_PlayerController.BP_PlayerController_C'"));
-	if (PlayerControllerClassRef.Class != nullptr)
-	{
-		PlayerControllerClass = PlayerControllerClassRef.Class;
-	}
-
-	static ConstructorHelpers::FClassFinder<AMainCharacter> MainPlayerClassRef(TEXT("/Script/Engine.Blueprint'/Game/Player/BP_MainCharacter.BP_MainCharacter_C'"));
-	if (MainPlayerClassRef.Class != nullptr)
-	{
-		DefaultPawnClass = MainPlayerClassRef.Class;
-	}
-	else
-	{
-		FString DebugMsg = FString::Printf(TEXT("Cannot find mainplay class"));
-		GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, DebugMsg);
-	}
-
 	// PlayerState
 	PlayerStateClass = ABVPlayerState::StaticClass();
 }

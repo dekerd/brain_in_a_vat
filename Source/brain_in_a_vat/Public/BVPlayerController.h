@@ -126,11 +126,43 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	TObjectPtr<class UInputAction> CameraZoomAction;
 
+	UPROPERTY()
+	bool bIsWaitingForArrival = false;
+
+	UPROPERTY()
+	FVector TargetMoveLocation;
+
 	// 줌 함수
 	void OnCameraZoom(const FInputActionValue& Value);
 	void OnCameraPan(const FInputActionValue& Value);
 	void OnCameraCenterPressed();
 
+// Fog of War
+public:
+	// --- 전장의 안개(Fog of War) 관련 변수 ---
+	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
+	UTextureRenderTarget2D* RT_Discovered;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
+	UTextureRenderTarget2D* RT_Vision;
+
+	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
+	UMaterialInterface* VisionBrushMaterial;
+
+	// 맵의 실제 크기 (월드 좌표 기준). 맵 크기에 맞게 조절해야 합니다.
+	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
+	float MapSize = 10000.0f; 
+
+	// 맵의 중앙 좌표
+	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
+	FVector2D MapCenter = FVector2D(0.0f, 0.0f);
+
+	// 시야 반경
+	UPROPERTY(EditDefaultsOnly, Category = "FogOfWar")
+	float VisionRadius = 1500.0f; 
+
+private:
+	void UpdateFogOfWar();
 
 // Construction Mode
 public:

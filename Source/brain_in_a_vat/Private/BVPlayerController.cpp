@@ -19,7 +19,9 @@
 #include "Components/CapsuleComponent.h"
 #include "Components/ShapeComponent.h"
 #include "Data/BVBuildingData.h"
+#include "Engine/Canvas.h"
 #include "Kismet/GameplayStatics.h"
+#include "Kismet/KismetRenderingLibrary.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
 #include "Widget/BVShopWidget.h"
@@ -165,6 +167,9 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	}
 
 	HoveredObject = NewHitActor;
+
+	// Fog of War
+	UpdateFogOfWar();
 }
 
 ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
@@ -251,7 +256,7 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 
 	if (bIsMovingToBuild || bIsConstructionMode)
 	{
-		// Cancel the construction if the player wants to move elsewhere while going to the site
+		// Cancel the construction if the player was going to the construction site
 		bIsMovingToBuild = false;
 		bIsConstructionMode = false;
 		PendingBuildingClass = nullptr;
@@ -269,11 +274,15 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 	if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 	{
 		const FVector DestLocation = Hit.ImpactPoint;
-		if (APawn* ControlledPawn = GetPawn())
+		if (HeroCharacter)
 		{
 			DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
-			UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, DestLocation);
-
+			
+			// HeroCharacter의 컨트롤러(AI Controller)를 가져와 이동 명령을 내립니다.
+			if (AController* HeroController = HeroCharacter->GetController())
+			{
+				UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, DestLocation);
+			}
 		}
 	}
 }
@@ -501,6 +510,63 @@ void ABVPlayerController::OnCameraCenterPressed()
 	{
 		CamPawn->CenterOnActor(HeroCharacter);
 	}
+}
+
+void ABVPlayerController::UpdateFogOfWar()
+{
+	// 에셋이 할당되지 않았거나 조종할 캐릭터가 없으면 리턴
+	if (!RT_Discovered || !RT_Vision || !VisionBrushMaterial || !HeroCharacter) return;
+
+	// 1. 현재 시야용 RT는 매 프레임 까맣게 초기화합니다. (탐사 기록용 RT는 초기화하지 않음!)
+	UKismetRenderingLibrary::ClearRenderTarget2D(this, RT_Vision, FLinearColor::Black);
+
+	UCanvas* Canvas;
+	FVector2D Size;
+	FDrawToRenderTargetContext ContextVision;
+	FDrawToRenderTargetContext ContextDiscovered;
+
+	// 캐릭터의 월드 위치를 가져옵니다.
+	FVector CharLoc = HeroCharacter->GetActorLocation();
+
+	// 월드 좌표를 렌더 타겟의 UV 좌표(0~1)를 거쳐 픽셀 좌표로 변환합니다.
+	// (MapCenter 기준으로 MapSize 크기만큼의 맵이라고 가정)
+	float NormalizedX = ((CharLoc.X - MapCenter.X) / MapSize) + 0.5f;
+	float NormalizedY = ((CharLoc.Y - MapCenter.Y) / MapSize) + 0.5f;
+
+	// 렌더 타겟에 그리기 시작
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, RT_Vision, Canvas, Size, ContextVision);
+	if (Canvas)
+	{
+		FVector2D DrawPos(NormalizedX * Size.X, NormalizedY * Size.Y);
+		
+		// 시야 반경 역시 맵 크기 비율에 맞춰 렌더 타겟 사이즈로 변환
+		float BrushSize = (VisionRadius / MapSize) * Size.X;
+
+		// M_VisionBrush를 도장 찍듯이 그려줍니다.
+		Canvas->K2_DrawMaterial(
+			VisionBrushMaterial,
+			DrawPos - FVector2D(BrushSize / 2.0f), // 브러시의 중앙을 맞추기 위해 절반만큼 이동
+			FVector2D(BrushSize, BrushSize),
+			FVector2D::ZeroVector, FVector2D::UnitVector, 0.0f, FVector2D(0.5f, 0.5f)
+		);
+	}
+	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, ContextVision);
+
+	// 동일한 방식으로 탐사 기록용 RT에도 그려줍니다. (단, 여긴 초기화를 안 하므로 누적됩니다)
+	UKismetRenderingLibrary::BeginDrawCanvasToRenderTarget(this, RT_Discovered, Canvas, Size, ContextDiscovered);
+	if (Canvas)
+	{
+		FVector2D DrawPos(NormalizedX * Size.X, NormalizedY * Size.Y);
+		float BrushSize = (VisionRadius / MapSize) * Size.X;
+
+		Canvas->K2_DrawMaterial(
+			VisionBrushMaterial,
+			DrawPos - FVector2D(BrushSize / 2.0f),
+			FVector2D(BrushSize, BrushSize),
+			FVector2D::ZeroVector, FVector2D::UnitVector, 0.0f, FVector2D(0.5f, 0.5f)
+		);
+	}
+	UKismetRenderingLibrary::EndDrawCanvasToRenderTarget(this, ContextDiscovered);
 }
 
 void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime)
