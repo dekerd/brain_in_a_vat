@@ -182,7 +182,7 @@ void ABVAIController::CheckLaneArrival()
 			// Check Team ID and reverse destination if hostile
 			if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(ControllingPawn))
 			{
-				if (TeamAgent->GetGenericTeamId() != FGenericTeamId(0))
+				if (TeamAgent->GetGenericTeamId() == FGenericTeamId(2))
 				{
 					FinalDestination = AssignedLane->GetFriendlyBaseLocation(); 
 				}
@@ -203,7 +203,7 @@ void ABVAIController::SetTargetLocationFromLaneState(APawn* ControllingPawn)
 		
 		if (IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(ControllingPawn))
 		{
-			if (TeamAgent->GetGenericTeamId() != FGenericTeamId(0))
+			if (TeamAgent->GetGenericTeamId() == FGenericTeamId(2))
 			{
 				FinalDestination = AssignedLane->GetFriendlyBaseLocation();
 			}

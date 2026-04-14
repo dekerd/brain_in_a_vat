@@ -271,6 +271,16 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 		TeamType = BuildingData->TeamType;
 	}
 
+	if (BuildingData->SpawnUnitClass)
+	{
+		SpawnUnitClass = BuildingData->SpawnUnitClass;
+	}
+	
+	if (BuildingData->SpawnInterval > 0.f)
+	{
+		RespawnInterval = BuildingData->SpawnInterval;
+	}
+
 	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
 	GEContext.AddSourceObject(this);
 
@@ -319,13 +329,16 @@ void ABVBuildingBase::SpawnUnit()
 
 	if (NewSpawnUnit)
 	{
-		// 2. AI가 빙의하기 전에, 유닛의 호주머니에 레인 정보를 쏙 넣어줍니다!
+		// 2. 건물의 팀 정보를 유닛에게 그대로 물려줍니다!
+		NewSpawnUnit->SetGenericTeamId(GetGenericTeamId());
+		
+		// 3. AI가 빙의하기 전에, 유닛의 호주머니에 레인 정보를 쏙 넣어줍니다!
 		if (AssignedLane)
 		{
 			NewSpawnUnit->AssignedLane = AssignedLane;
 		}
 
-		// 3. 자 이제 멈춰뒀던 스폰을 완료해라! (이때 AI가 빙의하면서 레인 정보를 성공적으로 읽음)
+		// 4. 자 이제 멈춰뒀던 스폰을 완료해라! (이때 AI가 빙의하면서 레인 정보를 성공적으로 읽음)
 		NewSpawnUnit->FinishSpawning(SpawnTransform);
 	}
 }

@@ -2,9 +2,9 @@
 
 
 #include "Characters/BVNPCBase.h"
-
 #include "BVPlayerController.h"
 #include "MainCharacter.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values
@@ -18,12 +18,9 @@ ABVNPCBase::ABVNPCBase()
 
 void ABVNPCBase::Interact(class AMainCharacter* Interactor)
 {
-	FString DebugMsg = FString::Printf(TEXT("%s 와(과) 상호작용 했습니다!"), *GetName());
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, DebugMsg);
-
 	PlayInteractionSound();
 
-	if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(Interactor->GetController()))
+	if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
 	{
 		BVPC->OpenShopUI(this);
 	}

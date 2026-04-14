@@ -3,6 +3,7 @@
 
 #include "Widget/BVInventorySlotWidget.h"
 
+#include "BVPlayerController.h"
 #include "MainCharacter.h"
 #include "Components/Image.h"
 #include "Item/BVItemData.h"
@@ -22,15 +23,16 @@ FReply UBVInventorySlotWidget::NativeOnMouseButtonDown(const FGeometry& InGeomet
 {
 	if (InMouseEvent.GetEffectingButton() == EKeys::RightMouseButton)
 	{
-		if (AMainCharacter* Character = Cast<AMainCharacter>(GetOwningPlayerPawn()))
+		ABVPlayerController* PC = Cast<ABVPlayerController>(GetOwningPlayer());
+		if (PC && PC->HeroCharacter)
 		{
 			if (bIsEquippedSlot)
 			{
-				Character->UnequipItem(ItemData);
+				PC->HeroCharacter->UnequipItem(ItemData);
 			}
 			else
 			{
-				Character->EquipItem(ItemData);
+				PC->HeroCharacter->EquipItem(ItemData);
 			}
 		}
 		return FReply::Handled();

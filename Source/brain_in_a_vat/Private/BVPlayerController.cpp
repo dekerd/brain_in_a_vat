@@ -119,19 +119,21 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	// Moving To Construction Site
 	if (bIsMovingToBuild)
 	{
-		APawn* ControlledPawn = GetPawn();
-		if (ControlledPawn)
+		if (HeroCharacter)
 		{
-			float Distance = FVector::Dist2D(ControlledPawn->GetActorLocation(), TargetBuildLocation);
+			float Distance = FVector::Dist2D(HeroCharacter->GetActorLocation(), TargetBuildLocation);
 
 			if (Distance <= StartToBuildRange)
 			{
-				StopMovement();
-
-				AMainCharacter* MainCharacter = Cast<AMainCharacter>(ControlledPawn);
-				if (MainCharacter && PendingBuildingClass)
+				// Stop HeroCharacter's movement
+				if (AController* HeroController = HeroCharacter->GetController())
 				{
-					MainCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass, PendingConstructionTime);
+					HeroController->StopMovement();
+				}
+
+				if (PendingBuildingClass)
+				{
+					HeroCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass, PendingConstructionTime);
 				}
 
 				if (CurrentGhostActor)
@@ -142,10 +144,8 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 				bIsMovingToBuild = false;
 				PendingBuildingClass = nullptr;
-
 			}
 		}
-		
 	}
 
 	// Mouse Hovering
@@ -316,7 +316,7 @@ void ABVPlayerController::SelectObject()
 			ABVNPCBase* ClickedNPC = Cast<ABVNPCBase>(SelectedActor);
 			if (ClickedNPC)
 			{
-				AMainCharacter* MyCharacter = Cast<AMainCharacter>(GetPawn());
+				AMainCharacter* MyCharacter = HeroCharacter;
 				if (MyCharacter)
 				{
 					float Distance = FVector::Dist(MyCharacter->GetActorLocation(), ClickedNPC->GetActorLocation());
@@ -325,11 +325,6 @@ void ABVPlayerController::SelectObject()
 					if (Distance <= InteractableDistance)
 					{
 						ClickedNPC->Interact(MyCharacter);
-						GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("NPC 상호작용 성공!"));
-					}
-					else
-					{
-						GEngine->AddOnScreenDebugMessage(-1, 2.0f, FColor::Red, TEXT("NPC가 너무 멀리 있습니다!"));
 					}
 				}
 			}
@@ -466,9 +461,9 @@ void ABVPlayerController::OnBuildClick()
 		BuildingRadius = FMath::Max(Extent.X, Extent.Y);
 
 		float CharacterRadius = 42.0f;
-		if (AMainCharacter* MyChar = Cast<AMainCharacter>(GetPawn()))
+		if (HeroCharacter)
 		{
-			if (UCapsuleComponent* Capsule = MyChar->GetCapsuleComponent())
+			if (UCapsuleComponent* Capsule = HeroCharacter->GetCapsuleComponent())
 			{
 				CharacterRadius = Capsule->GetScaledCapsuleRadius();
 			}
@@ -479,7 +474,13 @@ void ABVPlayerController::OnBuildClick()
 		
 		// Moving to construction site
 		bIsMovingToBuild = true;
-		UAIBlueprintHelperLibrary::SimpleMoveToLocation(this, TargetBuildLocation);
+		if (HeroCharacter)
+		{
+			if (AController* HeroController = HeroCharacter->GetController())
+			{
+				UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, TargetBuildLocation);
+			}
+		}
 		bIsConstructionMode = false;
 
 		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
@@ -668,6 +669,15 @@ void ABVPlayerController::UpdateFogOfWar()
 			}
 			
 			It->SetActorHiddenInGame(!bIsVisible); 
+		}
+		else if (It->GetGenericTeamId() == GetGenericTeamId() && !It->bIsDead)
+		{
+			// [추가된 부분] 아군 유닛은 항상 보이도록 강제 설정
+			if (It->OverheadWidgetComponent)
+			{
+				It->OverheadWidgetComponent->SetVisibility(true);
+			}
+			It->SetActorHiddenInGame(false);
 		}
 	}
 }

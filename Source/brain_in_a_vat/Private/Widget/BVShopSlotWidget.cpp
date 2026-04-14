@@ -49,11 +49,11 @@ void UBVShopSlotWidget::OnItemButtonClicked()
 {
 	if (!ItemData) return;
 
-	APlayerController* PC = GetOwningPlayer();
+	ABVPlayerController* PC = Cast<ABVPlayerController>(GetOwningPlayer());
 	if (!PC) return;
 
 	ABVPlayerState* PS = PC->GetPlayerState<ABVPlayerState>();
-	AMainCharacter* Character = Cast<AMainCharacter>(PC->GetPawn());
+	AMainCharacter* Character = PC->HeroCharacter;
 
 	if (PS && Character)
 	{

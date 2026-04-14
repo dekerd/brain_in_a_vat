@@ -6,6 +6,7 @@
 #include "BVBuildingData.generated.h"
 
 class ABVBuildingBase;
+class ABVAutobotBase;
 
 UCLASS(BlueprintType)
 class BRAIN_IN_A_VAT_API UBVBuildingData : public UPrimaryDataAsset
@@ -52,4 +53,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stats")
 	float AttackRange = 800.0f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spawn Unit")
+	TSubclassOf<ABVAutobotBase> SpawnUnitClass;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spawn Unit")
+	float SpawnInterval = 10.0f;
 };

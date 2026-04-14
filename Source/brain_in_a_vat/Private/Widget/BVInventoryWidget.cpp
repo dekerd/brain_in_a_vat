@@ -2,7 +2,7 @@
 
 
 #include "Widget/BVInventoryWidget.h"
-
+#include "BVPlayerController.h"
 #include "MainCharacter.h"
 #include "Components/WrapBox.h"
 #include "Widget/BVInventorySlotWidget.h"
@@ -15,8 +15,10 @@ void UBVInventoryWidget::RefreshInventory()
 	InventoryGrid->ClearChildren();
 	EquippedGrid->ClearChildren();
 
-	AMainCharacter* Character = Cast<AMainCharacter>(GetOwningPlayerPawn());
-	if (!Character) return;
+	ABVPlayerController* PC = Cast<ABVPlayerController>(GetOwningPlayer());
+	if (!PC || !PC->HeroCharacter) return;
+
+	AMainCharacter* Character = PC->HeroCharacter;
 
 	for (UBVItemData* Item : Character->GetEquippedWeapons())
 	{
@@ -48,10 +50,10 @@ void UBVInventoryWidget::NativeConstruct()
 {
 	Super::NativeConstruct();
 
-	AMainCharacter* MainCharacter = Cast<AMainCharacter>(GetOwningPlayerPawn());
-	if (MainCharacter)
+	ABVPlayerController* PC = Cast<ABVPlayerController>(GetOwningPlayer());
+	if (PC && PC->HeroCharacter)
 	{
-		MainCharacter->OnInventoryUpdated.AddDynamic(this, &UBVInventoryWidget::HandleOnAddItem);
+		PC->HeroCharacter->OnInventoryUpdated.AddDynamic(this, &UBVInventoryWidget::HandleOnAddItem);
 	}
 	
 }

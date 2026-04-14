@@ -2,6 +2,7 @@
 
 #include "CoreMinimal.h"
 #include "Engine/DataAsset.h"
+#include "Headers/BVTeam.h"
 #include "BVUnitData.generated.h"
 
 UCLASS(BlueprintType)
@@ -13,6 +14,12 @@ public:
 	
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	FName UnitName;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
+	EBVTeam TeamType = EBVTeam::Neutral;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
+	TSubclassOf<UUserWidget> OverheadWidgetClass;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	USkeletalMesh* UnitMesh;

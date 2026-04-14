@@ -156,6 +156,7 @@ void ABVAutobotBase::BeginPlay()
 	if (OverheadWidgetClass && OverheadWidgetComponent)
 	{
 		OverheadWidgetComponent->SetWidgetClass(OverheadWidgetClass);
+		OverheadWidgetComponent->InitWidget();
 	}
 
 	if (OverheadWidgetComponent)
@@ -273,6 +274,16 @@ bool ABVAutobotBase::IsDestroyed_Implementation() const
 void ABVAutobotBase::ApplyInitStatFromDataAsset()
 {
 	if (!ASC || !InitStatsEffect || !UnitData) return;
+
+	if (UnitData->OverheadWidgetClass)
+	{
+		OverheadWidgetClass = UnitData->OverheadWidgetClass;
+	}
+
+	if (GetGenericTeamId() == FGenericTeamId::NoTeam && UnitData->TeamType != EBVTeam::Neutral)
+	{
+		SetGenericTeamId(FGenericTeamId(static_cast<uint8>(UnitData->TeamType)));
+	}
 
 	if (UnitData->UnitMesh)
 	{
