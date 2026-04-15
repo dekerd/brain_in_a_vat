@@ -16,6 +16,9 @@ public:
 	FName UnitName;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
+	TObjectPtr<UTexture2D> UnitIcon;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	EBVTeam TeamType = EBVTeam::Neutral;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
@@ -56,6 +59,9 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
 	float AttackRange = 20.f;
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
+	float MovementSpeed = 150.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
 	float VisionRadius = 1200.0f;

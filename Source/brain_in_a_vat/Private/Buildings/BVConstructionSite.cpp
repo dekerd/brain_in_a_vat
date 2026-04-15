@@ -19,6 +19,8 @@
 #include "Components/BVHealthComponent.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Kismet/GameplayStatics.h"
+#include "AI/BVLane.h"
+#include "EngineUtils.h"
 
 
 // Sets default values
@@ -65,8 +67,10 @@ ABVConstructionSite::ABVConstructionSite()
 	// Widget
 	ProgressWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("ProgressWidgetComponent"));
 	ProgressWidgetComponent->SetupAttachment(RootComponent);
-	ProgressWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
+	ProgressWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
 	ProgressWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f));
+	ProgressWidgetComponent->SetRelativeScale3D(FVector(0.6f, 0.6f, 0.6f)); // 크기 조절
+	ProgressWidgetComponent->SetUsingAbsoluteRotation(true);
 	
 }
 
@@ -112,6 +116,7 @@ void ABVConstructionSite::BeginPlay()
 		FVector WidgetLoc = Bounds.Origin;
 		WidgetLoc.Z = TopZ + 100.0f;
 		ProgressWidgetComponent->SetWorldLocation(WidgetLoc);
+		ProgressWidgetComponent->SetWorldRotation(FRotator(65.f, 180.f, 0.f));
 	}
 	
 }
@@ -284,6 +289,32 @@ void ABVConstructionSite::SpawnRealBuilding()
 		if (IGenericTeamAgentInterface* NewBuildingTeam = Cast<IGenericTeamAgentInterface>(NewBuilding))
 		{
 			NewBuildingTeam->SetGenericTeamId(TeamId);
+		}
+
+		// 가장 가까운 레인을 자동으로 할당 (유닛 스폰 시 방향/타겟 기준이 됨)
+		{
+			const FVector BuildingLoc = NewBuilding->GetActorLocation();
+			ABVLane* ClosestLane = nullptr;
+			float ClosestDistSq  = TNumericLimits<float>::Max();
+
+			for (TActorIterator<ABVLane> It(GetWorld()); It; ++It)
+			{
+				ABVLane* Lane = *It;
+				if (!Lane) continue;
+
+				const FVector Foot = Lane->GetPerpendicularFoot(BuildingLoc);
+				const float   DistSq = FVector::DistSquared2D(Foot, BuildingLoc);
+				if (DistSq < ClosestDistSq)
+				{
+					ClosestDistSq = DistSq;
+					ClosestLane   = Lane;
+				}
+			}
+
+			if (ClosestLane)
+			{
+				NewBuilding->AssignedLane = ClosestLane;
+			}
 		}
 
 		UGameplayStatics::FinishSpawningActor(NewBuilding, SpawnTransform);

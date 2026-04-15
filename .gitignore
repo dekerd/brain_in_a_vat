@@ -1,0 +1,9 @@
+# Ignore everything at the project root...
+/*
+
+# ...except Source/ (and this .gitignore itself)
+!/.gitignore
+!/Source/
+
+# But never track IDE/agent scratch folders anywhere under Source/
+.claude/

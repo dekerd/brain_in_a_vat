@@ -52,6 +52,6 @@ void ABVLaserBeamBase::InitBeamEnd(const FVector& StartLocation, const FVector& 
 {
 	if (!NiagaraComponent) return;
 
-	NiagaraComponent->SetNiagaraVariablePosition(TEXT("BeamStart"), StartLocation);
-	NiagaraComponent->SetNiagaraVariablePosition(TEXT("BeamEnd"), EndLocation);
+	NiagaraComponent->SetVariablePosition(FName(TEXT("BeamStart")), StartLocation);
+	NiagaraComponent->SetVariablePosition(FName(TEXT("BeamEnd")), EndLocation);
 }

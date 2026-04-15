@@ -48,10 +48,10 @@ protected:
 	float TargetZoom = 2000.0f; // 목표 줌(스프링 암 길이)
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Zoom")
-	float MinZoom = 2000.0f; // 최대 줌인 거리
+	float MinZoom = 5000.0f; // 최대 줌인 거리
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Zoom")
-	float MaxZoom = 3000.0f; // 최대 줌아웃 거리
+	float MaxZoom = 7000.0f; // 최대 줌아웃 거리
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Zoom")
 	float ZoomStep = 200.0f; // 휠 1칸당 줌 이동량
