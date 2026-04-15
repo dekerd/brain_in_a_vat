@@ -19,7 +19,7 @@ ABVRTSCameraPawn::ABVRTSCameraPawn()
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->bDoCollisionTest = false;
-	CameraBoom->TargetArmLength = 1300.0f;
+	CameraBoom->TargetArmLength = 5000.0f;
 	CameraBoom->SetRelativeRotation(FRotator(-65.f, 0.f, 0.f));
 	CameraBoom->bInheritPitch = false;
 	CameraBoom->bInheritYaw = false;

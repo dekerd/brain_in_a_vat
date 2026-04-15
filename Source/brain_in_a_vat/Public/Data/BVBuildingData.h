@@ -29,6 +29,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
 	TObjectPtr<UTexture2D> BuildingIcon;
 
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction", meta = (MultiLine = true))
+	FText Description;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
 	TObjectPtr<UStaticMesh> BuildingMesh;
 

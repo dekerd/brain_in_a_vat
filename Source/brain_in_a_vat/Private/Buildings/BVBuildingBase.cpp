@@ -76,8 +76,10 @@ ABVBuildingBase::ABVBuildingBase()
 	
 	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidget"));
 	OverheadWidgetComponent->SetupAttachment(RootComponent);
-	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f));
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+	OverheadWidgetComponent->SetDrawSize(FVector2D(200.f, 30.f)); 
+	OverheadWidgetComponent->SetRelativeScale3D(FVector(0.6f, 0.6f, 0.6f)); // 크기 조절
+	OverheadWidgetComponent->SetUsingAbsoluteRotation(true);
 	
 }
 
@@ -225,10 +227,20 @@ void ABVBuildingBase::BeginPlay()
 	// Building Overhead Widget
 	if (OverheadWidgetComponent)
 	{
+		// DrawSize는 UMG 디자인 캔버스 크기로 고정(내용물 잘리지 않게).
+		// 실제 보이는 월드 크기는 Scale3D로 조절한다 — 건물 메시 풋프린트에 비례.
+		const FVector2D WidgetDesignSize(200.f, 30.f);
+		const float BuildingFootprint = FMath::Max(Bounds.BoxExtent.X, Bounds.BoxExtent.Y) * 2.0f;
+		const float TargetWorldWidth  = FMath::Clamp(BuildingFootprint * 0.6f, 120.f, 280.f);
+		const float WidgetScale       = TargetWorldWidth / WidgetDesignSize.X;
+		OverheadWidgetComponent->SetDrawSize(WidgetDesignSize);
+		OverheadWidgetComponent->SetRelativeScale3D(FVector(WidgetScale));
+
 		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
 		FVector WidgetLoc = Bounds.Origin;
 		WidgetLoc.Z = TopZ + 100.0f;
 		OverheadWidgetComponent->SetWorldLocation(WidgetLoc);
+		OverheadWidgetComponent->SetWorldRotation(FRotator(65.f, 180.f, 0.f));
 		
 		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
@@ -237,6 +249,15 @@ void ABVBuildingBase::BeginPlay()
 			{
 				OverheadWidget->SetBuildingName(BuildingName);
 				OverheadWidget->InitWithHealthComponent(HealthComponent);
+			}
+		}
+
+		// Tab으로 전역 off 상태라면 스폰 즉시 위젯 숨기기
+		if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController()))
+		{
+			if (!BVPC->AreOverheadWidgetsVisible())
+			{
+				OverheadWidgetComponent->SetVisibility(false);
 			}
 		}
 	}
@@ -304,19 +325,49 @@ void ABVBuildingBase::SpawnUnit()
 	UWorld* World = GetWorld();
 	if (!World) return;
 
-	// Choosing spawn location
-	float SpawnDistance = 200.f;
-
+	// 스폰 반경 (건물 중심으로부터 허용되는 최대 거리)
+	float SpawnRadius = 200.f;
 	if (BoxComponent)
 	{
-		float BoxRadius = BoxComponent->GetScaledBoxExtent().X;
-		SpawnDistance = BoxRadius + 100.f;
+		const float BoxRadius = BoxComponent->GetScaledBoxExtent().X;
+		SpawnRadius = BoxRadius + 100.f;
 	}
-	
-	FVector SpawnLocation = GetActorLocation() + (GetActorForwardVector() * SpawnDistance);
+
+	const FVector BuildingLoc = GetActorLocation();
+
+	// 스폰 위치: 기본은 Forward 방향으로 반경만큼 이동한 지점.
+	// AssignedLane이 있으면 "레인에서 가장 가까운 지점"으로 덮어쓰되, 반경 바깥이면 반경 내로 클램프.
+	FVector SpawnLocation    = BuildingLoc + GetActorForwardVector() * SpawnRadius;
+	FVector SpawnDirection   = GetActorForwardVector();
+
+	if (AssignedLane)
+	{
+		const FVector FootOnLane         = AssignedLane->GetPerpendicularFoot(BuildingLoc);
+		const FVector BuildingToFoot     = FVector(FootOnLane.X - BuildingLoc.X, FootOnLane.Y - BuildingLoc.Y, 0.f);
+		const float   DistanceToLane     = BuildingToFoot.Size();
+
+		if (DistanceToLane <= SpawnRadius)
+		{
+			// 레인이 반경 안에 있음 -> 레인 위의 최단거리 지점에 그대로 스폰
+			SpawnLocation = FVector(FootOnLane.X, FootOnLane.Y, BuildingLoc.Z);
+		}
+		else if (!BuildingToFoot.IsNearlyZero())
+		{
+			// 레인이 반경 밖 -> 반경 경계에서 레인 쪽으로 가장 가까운 점
+			SpawnLocation = BuildingLoc + BuildingToFoot.GetSafeNormal() * SpawnRadius;
+		}
+
+		// 스폰 방향은 적 베이스 쪽으로
+		const FVector ToEnemy = (AssignedLane->GetEnemyBaseLocation() - SpawnLocation).GetSafeNormal2D();
+		if (!ToEnemy.IsNearlyZero())
+		{
+			SpawnDirection = ToEnemy;
+		}
+	}
+
 	SpawnLocation.Z += 50.0f;
-	const FRotator SpawnRotation = FRotator::ZeroRotator;
-	FTransform SpawnTransform(SpawnRotation, SpawnLocation);
+	const FRotator  SpawnRotation = SpawnDirection.Rotation();
+	const FTransform SpawnTransform(SpawnRotation, SpawnLocation);
 
 	// 1. 지연 스폰 (태어나기 직전, 메모리에만 올라간 일시정지 상태)
 	ABVAutobotBase* NewSpawnUnit = World->SpawnActorDeferred<ABVAutobotBase>(

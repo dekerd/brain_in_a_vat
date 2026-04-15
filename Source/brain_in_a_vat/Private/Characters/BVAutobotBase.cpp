@@ -62,14 +62,14 @@ ABVAutobotBase::ABVAutobotBase()
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
 
 	// <------------ Widgets ------------>
-	// HealthBar Widget
+	// Unit Overhead Widget
 	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidgetComponent"));
 	OverheadWidgetComponent->SetupAttachment(RootComponent);
-	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::Screen);
-
-	OverheadWidgetComponent->SetDrawSize(FVector2D(120.f, 10.f));
-	OverheadWidgetComponent->SetRelativeLocation(FVector(0.f, 0.f, 90.f));
-	OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
+	
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World); 
+	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f)); 
+	OverheadWidgetComponent->SetRelativeScale3D(FVector(0.5f, 0.5f, 0.5f)); // 이 값을 조절하여 게임 내 위젯 크기를 맞추세요.
+	OverheadWidgetComponent->SetUsingAbsoluteRotation(true); // 유닛이 회전해도 위젯은 돌아가지 않도록 고정!
 
 	// Gameplay Ability System (GAS)
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
@@ -161,6 +161,20 @@ void ABVAutobotBase::BeginPlay()
 
 	if (OverheadWidgetComponent)
 	{
+		// [수정된 부분] BP 설정을 무시하고 BeginPlay에서 강제 덮어쓰기!
+		OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+		OverheadWidgetComponent->SetUsingAbsoluteRotation(true); 
+		OverheadWidgetComponent->SetWorldRotation(FRotator(65.f, 180.f, 0.f)); // 카메라 정면 응시
+
+		// DrawSize는 UMG 디자인 캔버스 크기로 고정(내용물 잘리지 않게).
+		// 실제 보이는 월드 크기는 Scale3D로 조절한다 — 유닛 캡슐 크기에 비례.
+		const FVector2D WidgetDesignSize(250.f, 60.f);
+		const float UnitDiameter     = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0f : 60.f;
+		const float TargetWorldWidth = FMath::Clamp(UnitDiameter * 0.8f, 50.f, 100.f);
+		const float WidgetScale      = TargetWorldWidth / WidgetDesignSize.X;
+		OverheadWidgetComponent->SetDrawSize(WidgetDesignSize);
+		OverheadWidgetComponent->SetRelativeScale3D(FVector(WidgetScale));
+
 		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
 		FVector WidgetLoc = GetActorLocation();
 		WidgetLoc.Z = TopZ + 50.0f;
@@ -181,7 +195,15 @@ void ABVAutobotBase::BeginPlay()
 				OverheadWidget->InitWithHealthComponent(HealthComponent);
 			}
 		}
-		
+
+		// Tab으로 전역 off 상태라면 스폰 즉시 위젯 숨기기
+		if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController()))
+		{
+			if (!BVPC->AreOverheadWidgetsVisible())
+			{
+				OverheadWidgetComponent->SetVisibility(false);
+			}
+		}
 	}
 	
 	// Setting Material
@@ -298,6 +320,11 @@ void ABVAutobotBase::ApplyInitStatFromDataAsset()
 	VisionRadius = UnitData->VisionRadius;
 	AttackMontage = UnitData->AttackMontage;
 	DeathMontage  = UnitData->DeathMontage;
+
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->MaxWalkSpeed = UnitData->MovementSpeed;
+	}
 
 	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
 	GEContext.AddInstigator(this, this);

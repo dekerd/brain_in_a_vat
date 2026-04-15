@@ -94,6 +94,23 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
 	TObjectPtr<class UInputAction> CloseUIAction;
+
+	// Tab 키 등에 바인드: 모든 유닛/건물의 머리 위 위젯을 한 번에 끄고 켠다
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Input")
+	TObjectPtr<class UInputAction> ToggleOverheadWidgetsAction;
+
+public:
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ToggleOverheadWidgets();
+
+	// 새로 스폰되는 액터가 현재 토글 상태를 조회할 수 있도록 노출
+	UFUNCTION(BlueprintPure, Category = "UI")
+	bool AreOverheadWidgetsVisible() const { return bOverheadWidgetsVisible; }
+
+protected:
+	// 전체 오버헤드 위젯 표시 여부 (Tab 토글용)
+	UPROPERTY(BlueprintReadOnly, Category = "UI")
+	bool bOverheadWidgetsVisible = true;
 	
 	UPROPERTY()
 	TObjectPtr<class UUserWidget> InventoryWidget;
@@ -252,6 +269,24 @@ public:
 protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<class UUserWidget> GoldPopupWidgetClass;
+
+// Building Detail Widget
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> BuildingDetailWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> BuildingDetailWidget;
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowBuildingDetail(ABVBuildingBase* InBuilding);
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void HideBuildingDetail();
+
+protected:
+	// 현재 상세 패널이 표시 중인 건물 (약한 참조)
+	TWeakObjectPtr<ABVBuildingBase> DetailBuilding;
 
 // NPC Interaction Widget
 public:

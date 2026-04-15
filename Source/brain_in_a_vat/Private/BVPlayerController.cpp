@@ -22,8 +22,11 @@
 #include "Components/WidgetComponent.h"
 #include "Data/BVBuildingData.h"
 #include "Engine/Canvas.h"
+#include "Interface/BVDamageableInterface.h"
+#include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetRenderingLibrary.h"
+#include "Widget/BVBuildingDetailWidget.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
 #include "Widget/BVShopWidget.h"
@@ -155,7 +158,8 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 	if (NewHitActor != HoveredObject)
 	{
-		if (HoveredObject)
+		// 커서가 벗어나도, '선택된 건물'은 호버 이펙트 유지
+		if (HoveredObject && HoveredObject != DetailBuilding.Get())
 		{
 			if (HoveredObject->Implements<UBVDamageableInterface>())
 			{
@@ -178,6 +182,51 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	}
 
 	HoveredObject = NewHitActor;
+
+	// 상세 패널이 열려 있을 때, 리스폰 프로그레스 갱신 + 건물 옆에 붙여 따라가기
+	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		if (ABVBuildingBase* DetailB = DetailBuilding.Get())
+		{
+			if (DetailB->bIsDestroyed)
+			{
+				HideBuildingDetail();
+			}
+			else
+			{
+				// 1) 프로그레스 갱신
+				if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(BuildingDetailWidget))
+				{
+					float Ratio = 0.f;
+					if (DetailB->RespawnInterval > 0.f && DetailB->SpawnUnitClass)
+					{
+						Ratio = FMath::Fmod(DetailB->ElapsedTime, DetailB->RespawnInterval) / DetailB->RespawnInterval;
+					}
+					DetailW->SetRespawnProgress(Ratio);
+				}
+
+				// 2) 건물 월드 위치 -> 위젯(슬레이트) 좌표 변환해 위젯 위치 갱신
+				FVector2D WidgetPos;
+				if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+						this, DetailB->GetActorLocation(), WidgetPos, false))
+				{
+					// 스크린 픽셀 기준 단순 오프셋: 건물 중심에서 오른쪽으로 약간 띄우기
+					const FVector2D PanelOffset(60.f, -30.f);
+					BuildingDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+					BuildingDetailWidget->SetVisibility(ESlateVisibility::Visible);
+				}
+				else
+				{
+					// 건물이 카메라 뒤/밖이면 숨김
+					BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+				}
+			}
+		}
+		else
+		{
+			HideBuildingDetail();
+		}
+	}
 
 	// Fog of war
 	UpdateFogOfWar();
@@ -260,11 +309,42 @@ void ABVPlayerController::SetupInputComponent()
 			{
 				EnhancedInputComponent->BindAction(CloseUIAction, ETriggerEvent::Started, this, &ABVPlayerController::CloseCurrentUI);
 			}
+
+			// Tab: Toggle all overhead widgets (units + buildings)
+			if (ToggleOverheadWidgetsAction)
+			{
+				EnhancedInputComponent->BindAction(ToggleOverheadWidgetsAction, ETriggerEvent::Started, this, &ABVPlayerController::ToggleOverheadWidgets);
+			}
 		}
+}
+
+void ABVPlayerController::ToggleOverheadWidgets()
+{
+	bOverheadWidgetsVisible = !bOverheadWidgetsVisible;
+
+	// 건물 위젯
+	for (TActorIterator<ABVBuildingBase> It(GetWorld()); It; ++It)
+	{
+		if (It->OverheadWidgetComponent)
+		{
+			It->OverheadWidgetComponent->SetVisibility(bOverheadWidgetsVisible);
+		}
+	}
+
+	// 유닛 위젯
+	for (TActorIterator<ABVAutobotBase> It(GetWorld()); It; ++It)
+	{
+		if (It->OverheadWidgetComponent)
+		{
+			It->OverheadWidgetComponent->SetVisibility(bOverheadWidgetsVisible);
+		}
+	}
 }
 
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 {
+	// 우클릭 = 건물 선택 해제
+	HideBuildingDetail();
 
 	if (bIsMovingToBuild || bIsConstructionMode)
 	{
@@ -312,7 +392,7 @@ void ABVPlayerController::SelectObject()
 		if (SelectedActor)
 		{
 			UE_LOG(LogTemp, Log, TEXT("Selected: %s"), *SelectedActor->GetName())
-			
+
 			ABVNPCBase* ClickedNPC = Cast<ABVNPCBase>(SelectedActor);
 			if (ClickedNPC)
 			{
@@ -328,6 +408,21 @@ void ABVPlayerController::SelectObject()
 					}
 				}
 			}
+
+			// 건물 클릭 시 상세 패널 오픈 (다른 것이면 닫기)
+			if (ABVBuildingBase* ClickedBuilding = Cast<ABVBuildingBase>(SelectedActor))
+			{
+				ShowBuildingDetail(ClickedBuilding);
+			}
+			else
+			{
+				HideBuildingDetail();
+			}
+		}
+		else
+		{
+			// 빈 공간 클릭 -> 상세 패널 닫기
+			HideBuildingDetail();
 		}
 	}
 }
@@ -440,11 +535,87 @@ void ABVPlayerController::CloseCurrentUI()
 		ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
+	// Close Building Detail
+	HideBuildingDetail();
+
 	// Exit Ghost Building Mode if active
 	if (bIsConstructionMode)
 	{
 		ExitConstructionMode();
-	}	
+	}
+}
+
+void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
+{
+	if (!InBuilding) return;
+
+	// 이전 선택 건물이 있고 새 선택과 다르다면, 커서 위에 있지 않을 때 호버 이펙트 해제
+	if (ABVBuildingBase* Previous = DetailBuilding.Get())
+	{
+		if (Previous != InBuilding && Previous != HoveredObject)
+		{
+			if (Previous->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(Previous, false);
+			}
+		}
+	}
+
+	// 최초 1회만 위젯 생성
+	if (!BuildingDetailWidget && BuildingDetailWidgetClass)
+	{
+		BuildingDetailWidget = CreateWidget<UUserWidget>(this, BuildingDetailWidgetClass);
+		if (BuildingDetailWidget)
+		{
+			BuildingDetailWidget->AddToViewport();
+			BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+
+	if (!BuildingDetailWidget) return;
+
+	DetailBuilding = InBuilding;
+
+	// 선택된 건물은 호버 이펙트를 강제로 켜둔다 (커서가 벗어나도 유지)
+	if (InBuilding->Implements<UBVDamageableInterface>())
+	{
+		IBVDamageableInterface::Execute_SetHovered(InBuilding, true);
+	}
+
+	if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(BuildingDetailWidget))
+	{
+		DetailW->SetFromBuilding(InBuilding);
+	}
+
+	BuildingDetailWidget->SetVisibility(ESlateVisibility::Visible);
+
+	// 오픈 즉시 한 번 위치를 잡아둠 (다음 틱부터 PlayerTick에서 이어서 갱신)
+	FVector2D WidgetPos;
+	if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+			this, InBuilding->GetActorLocation(), WidgetPos, false))
+	{
+		const FVector2D PanelOffset(60.f, -30.f);
+		BuildingDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+	}
+}
+
+void ABVPlayerController::HideBuildingDetail()
+{
+	// 선택 해제 시, 현재 커서가 그 건물 위에 있지 않다면 호버 이펙트를 끈다
+	if (ABVBuildingBase* Previous = DetailBuilding.Get())
+	{
+		if (Previous != HoveredObject && Previous->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(Previous, false);
+		}
+	}
+
+	DetailBuilding = nullptr;
+
+	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
 }
 
 void ABVPlayerController::OnBuildClick()
@@ -635,12 +806,12 @@ void ABVPlayerController::UpdateFogOfWar()
 				}
 			}
 
-			// 위젯 끄기/켜기
+			// 위젯 끄기/켜기 (Tab 전역 토글과 AND)
 			if (It->OverheadWidgetComponent)
 			{
-				It->OverheadWidgetComponent->SetVisibility(bIsVisible);
+				It->OverheadWidgetComponent->SetVisibility(bIsVisible && bOverheadWidgetsVisible);
 			}
-			It->SetActorHiddenInGame(!bIsVisible); 
+			It->SetActorHiddenInGame(!bIsVisible);
 		}
 	}
 
@@ -662,20 +833,20 @@ void ABVPlayerController::UpdateFogOfWar()
 				}
 			}
 
-			// 위젯 끄기/켜기
+			// 위젯 끄기/켜기 (Tab 전역 토글과 AND)
 			if (It->OverheadWidgetComponent)
 			{
-				It->OverheadWidgetComponent->SetVisibility(bIsVisible);
+				It->OverheadWidgetComponent->SetVisibility(bIsVisible && bOverheadWidgetsVisible);
 			}
-			
-			It->SetActorHiddenInGame(!bIsVisible); 
+
+			It->SetActorHiddenInGame(!bIsVisible);
 		}
 		else if (It->GetGenericTeamId() == GetGenericTeamId() && !It->bIsDead)
 		{
-			// [추가된 부분] 아군 유닛은 항상 보이도록 강제 설정
+			// 아군 유닛: 항상 액터는 보이고, 위젯만 Tab 토글에 따른다
 			if (It->OverheadWidgetComponent)
 			{
-				It->OverheadWidgetComponent->SetVisibility(true);
+				It->OverheadWidgetComponent->SetVisibility(bOverheadWidgetsVisible);
 			}
 			It->SetActorHiddenInGame(false);
 		}
