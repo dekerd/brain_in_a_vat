@@ -87,11 +87,11 @@ public:
 
 // Attack Setting
 protected:
+	// 시야 범위 감지 구체 (VisionRadius 사용)
 	UPROPERTY(EditAnywhere, Category="Combat")
-	TObjectPtr<class USphereComponent> AttackRangeSphere;
+	TObjectPtr<class USphereComponent> VisionSphere;
 
 	float FireInterval = 1.0f;
-	float AttackRange = 450.f;
 	float TimeSinceLastShot = 0.f;
 	float GlobalFireTimer = 0.0f;
 	const float MinFireInterval = 0.2f;
@@ -100,7 +100,7 @@ protected:
 	TArray<TWeakObjectPtr<class AActor>> EnemiesInRange;
 
 	UFUNCTION()
-	void OnAttackRangeBeginOverlap(
+	void OnVisionRadiusBeginOverlap(
 		UPrimitiveComponent* OverlappedComp,
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComp,
@@ -109,7 +109,7 @@ protected:
 		const FHitResult& SweepResult);
 
 	UFUNCTION()
-	void OnAttackRangeEndOverlap(
+	void OnVisionRadiusEndOverlap(
 		UPrimitiveComponent* OverlappedComp,
 		AActor* OtherActor,
 		UPrimitiveComponent* OtherComp,

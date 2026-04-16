@@ -409,10 +409,17 @@ void ABVPlayerController::SelectObject()
 				}
 			}
 
-			// 건물 클릭 시 상세 패널 오픈 (다른 것이면 닫기)
+			// 건물 클릭 시 상세 패널 토글 (같은 건물이면 닫기, 다른 건물이면 전환)
 			if (ABVBuildingBase* ClickedBuilding = Cast<ABVBuildingBase>(SelectedActor))
 			{
-				ShowBuildingDetail(ClickedBuilding);
+				if (DetailBuilding.Get() == ClickedBuilding)
+				{
+					HideBuildingDetail();
+				}
+				else
+				{
+					ShowBuildingDetail(ClickedBuilding);
+				}
 			}
 			else
 			{
@@ -741,9 +748,10 @@ void ABVPlayerController::UpdateFogOfWar()
 		{
 			FVector Loc = Provider.TargetActor->GetActorLocation();
 			float NormalizedX = ((Loc.X - MapCenter.X) / MapSize) + 0.5f;
-			float NormalizedY = ((Loc.Y - MapCenter.Y) / MapSize) + 0.5f; 
-			
-			float BrushSize = (Provider.Radius / MapSize) * SizeVision.X;
+			float NormalizedY = ((Loc.Y - MapCenter.Y) / MapSize) + 0.5f;
+
+			// 브러시는 원이 사각형에 inscribed 되는 머티리얼이라, 한 변 = 지름(2R) 이어야 한다.
+			float BrushSize = (Provider.Radius * 2.0f / MapSize) * SizeVision.X;
 			FVector2D BrushExtent(BrushSize, BrushSize);
 			FVector2D BrushOffset(BrushSize / 2.0f, BrushSize / 2.0f);
 
@@ -770,9 +778,10 @@ void ABVPlayerController::UpdateFogOfWar()
 		{
 			FVector Loc = Provider.TargetActor->GetActorLocation();
 			float NormalizedX = ((Loc.X - MapCenter.X) / MapSize) + 0.5f;
-			float NormalizedY = ((Loc.Y - MapCenter.Y) / MapSize) + 0.5f; 
-			
-			float BrushSize = (Provider.Radius / MapSize) * SizeDiscovered.X;
+			float NormalizedY = ((Loc.Y - MapCenter.Y) / MapSize) + 0.5f;
+
+			// RT_Vision과 동일하게 지름 기준
+			float BrushSize = (Provider.Radius * 2.0f / MapSize) * SizeDiscovered.X;
 			FVector2D BrushExtent(BrushSize, BrushSize);
 			FVector2D BrushOffset(BrushSize / 2.0f, BrushSize / 2.0f);
 

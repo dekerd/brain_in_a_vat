@@ -6,6 +6,8 @@
 #include "GameFramework/Actor.h"
 #include "BVProjectileBase.generated.h"
 
+class UBVProjectileData;
+
 UCLASS(Blueprintable, BlueprintType)
 class BRAIN_IN_A_VAT_API ABVProjectileBase : public AActor
 {
@@ -17,10 +19,26 @@ public:
 	ABVProjectileBase();
 
 	void BeginPlay() override;
+	void Tick(float DeltaTime) override;
+	virtual void OnConstruction(const FTransform& Transform) override;
 	
 	void InitVelocity(const FVector& FireDir);
 
 	void SetLaunchVelocity(const FVector& LaunchVelocity);
+
+	// 스폰 후 즉시 데미지를 덮어쓸 때 사용 (유닛의 Damage 스탯으로 덮어쓰기 위함)
+	void SetDamageAmount(float NewDamage) { DamageAmount = NewDamage; }
+
+	// 최대 이동거리 설정. 이 거리 이상 날아가면 자동 폭발.
+	void SetMaxTravelDistance(float InDistance) { MaxTravelDistance = InDistance; }
+
+	// DA에서 메시/사운드/VFX/궤적 등을 읽어 자신을 구성한다.
+	// BeginPlay 시작 시 자동 호출되므로, BP에서 ProjectileData만 할당하면 끝.
+	void ApplyDataAsset();
+
+	// 투사체 설정 DA. BP 디폴트에서 할당하면 스폰 시 자동 적용됨.
+	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
+	TObjectPtr<UBVProjectileData> ProjectileData;
 
 protected:
 
@@ -71,5 +89,13 @@ protected:
 
 	UFUNCTION()
 	void OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor, UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit);
-	
+
+	// 최대 이동거리 도달 시 폭발 처리
+	void Explode();
+
+	// 스폰 위치 (거리 계산용)
+	FVector SpawnOrigin = FVector::ZeroVector;
+
+	// 0 이하면 거리 제한 없음 (Lifespan으로만 소멸)
+	float MaxTravelDistance = 0.f;
 };

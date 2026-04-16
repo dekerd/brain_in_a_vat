@@ -20,6 +20,11 @@ public:
 	UFUNCTION()
 	void SetIsDead();
 
+	// 외부에서(예: 원거리 유닛이 사거리 안에서 조준 중일 때) idle 강제 ON/OFF.
+	// true이면 NativeUpdateAnimation에서 Velocity와 무관하게 bIsIdle=true로 고정한다.
+	UFUNCTION(BlueprintCallable, Category = "Character")
+	void SetForceIdle(bool bInForceIdle) { bForceIdle = bInForceIdle; }
+
 protected:
 
 	virtual void NativeInitializeAnimation() override;
@@ -57,5 +62,8 @@ protected:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
 	uint8 bIsDead : 1;
-	
+
+	// SetForceIdle()로 켜진다. 사거리 안에서 사격 중일 때 walking 모션을 차단하기 위한 플래그.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Character)
+	uint8 bForceIdle : 1;
 };

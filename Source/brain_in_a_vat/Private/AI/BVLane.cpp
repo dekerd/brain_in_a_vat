@@ -4,32 +4,10 @@
 
 ABVLane::ABVLane()
 {
-	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.bCanEverTick = false;
 }
 
-void ABVLane::Tick(float DeltaTime)
-{
-	Super::Tick(DeltaTime);
-
-	FVector HeightOffset(0.f, 0.f, 50.f);
-
-	if (FriendlyBase && EnemyBase)
-	{
-		DrawDebugLine(
-			GetWorld(),
-			FriendlyBase->GetActorLocation() + HeightOffset,
-			EnemyBase->GetActorLocation() + HeightOffset,
-			FColor::Cyan,
-			true,
-			-1.f,
-			0,
-			20.f
-		);
-	}
-}
-
-
-FVector ABVLane::GetPerpendicularFoot(const FVector& UnitPos) const
+FVector ABVLane::GetPerpendicularFoot(const FVector& UnitPos, float LateralOffset) const
 {
 	if (!FriendlyBase || !EnemyBase) return UnitPos;
 
@@ -45,6 +23,18 @@ FVector ABVLane::GetPerpendicularFoot(const FVector& UnitPos) const
 
 	FVector Foot = A + t * AB;
 	Foot.Z = UnitPos.Z; // 유닛의 높이 유지
+
+	// 레인의 우측 방향(XY 평면 기준 90도 시계방향 회전)으로 평행이동.
+	// 같은 레인의 유닛들이 같은 지점에 겹치지 않게 하려고 사용한다.
+	if (!FMath::IsNearlyZero(LateralOffset))
+	{
+		FVector LaneDir2D = AB;
+		LaneDir2D.Z = 0.f;
+		LaneDir2D = LaneDir2D.GetSafeNormal();
+		const FVector RightDir(LaneDir2D.Y, -LaneDir2D.X, 0.f);
+		Foot += RightDir * LateralOffset;
+	}
+
 	return Foot;
 }
 

@@ -21,6 +21,7 @@ void UBVAnimInstance::NativeInitializeAnimation()
 		MovementComponent = Owner->GetCharacterMovement();
 	}
 	bIsDead = false;
+	bForceIdle = false;
 }
 
 void UBVAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
@@ -31,7 +32,7 @@ void UBVAnimInstance::NativeUpdateAnimation(float DeltaSeconds)
 	{
 		Velocity = MovementComponent->Velocity;
 		GroundSpeed = Velocity.Size2D();
-		bIsIdle = GroundSpeed < MovingThreshold;
+		bIsIdle = bForceIdle || (GroundSpeed < MovingThreshold);
 		bIsFalling = MovementComponent->IsFalling();
 		bIsJumping = bIsFalling & (Velocity.Z > JumpingThreshold);
 	}

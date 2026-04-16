@@ -15,12 +15,16 @@
 #include "Kismet/GameplayStatics.h"
 #include "Weapons/Projectiles/BVLaserBeamBase.h"
 #include "Particles/ParticleSystem.h"
+#include "Data/BVProjectileData.h"
+#include "NiagaraComponent.h"
+#include "NiagaraFunctionLibrary.h"
+#include "NiagaraSystem.h"
 
 
 // Sets default values
 ABVProjectileBase::ABVProjectileBase()
 {
-	PrimaryActorTick.bCanEverTick = false;
+	PrimaryActorTick.bCanEverTick = true;
 
 	// Collision
 	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
@@ -57,13 +61,135 @@ ABVProjectileBase::ABVProjectileBase()
 	
 }
 
+void ABVProjectileBase::OnConstruction(const FTransform& Transform)
+{
+	Super::OnConstruction(Transform);
+
+	// 에디터 뷰포트에서도 DA가 할당되면 즉시 메시/스케일/충돌반경 반영.
+	// (사운드/Niagara/속도/궤적 등 런타임 전용 항목은 BeginPlay에서 처리)
+	if (ProjectileData)
+	{
+		if (StaticMeshComponent && ProjectileData->ProjectileMesh)
+		{
+			StaticMeshComponent->SetStaticMesh(ProjectileData->ProjectileMesh);
+			StaticMeshComponent->SetRelativeScale3D(FVector(ProjectileData->MeshScale));
+		}
+		if (CollisionComponent && ProjectileData->CollisionRadius > 0.f)
+		{
+			CollisionComponent->SetSphereRadius(ProjectileData->CollisionRadius);
+		}
+	}
+}
+
 void ABVProjectileBase::BeginPlay()
 {
 	Super::BeginPlay();
 
+	SpawnOrigin = GetActorLocation();
+
+	// DA가 BP 디폴트에 할당돼 있으면 자동으로 적용 (메시/VFX/사운드/속도 등)
+	ApplyDataAsset();
+
 	if (FireSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, FireSound, GetActorLocation(), FireSoundVolume);
+	}
+}
+
+void ABVProjectileBase::Tick(float DeltaTime)
+{
+	Super::Tick(DeltaTime);
+
+	if (MaxTravelDistance > 0.f)
+	{
+		const float DistTraveled = FVector::Dist(SpawnOrigin, GetActorLocation());
+		if (DistTraveled >= MaxTravelDistance)
+		{
+			Explode();
+		}
+	}
+}
+
+void ABVProjectileBase::Explode()
+{
+	if (HitEffect)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, GetActorLocation(), GetActorRotation());
+	}
+	if (HitSound)
+	{
+		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
+	}
+	Destroy();
+}
+
+void ABVProjectileBase::ApplyDataAsset()
+{
+	if (!ProjectileData) return;
+	const UBVProjectileData* PData = ProjectileData;
+
+	// --- Visual: Mesh ---
+	if (StaticMeshComponent && PData->ProjectileMesh)
+	{
+		StaticMeshComponent->SetStaticMesh(PData->ProjectileMesh);
+		StaticMeshComponent->SetRelativeScale3D(FVector(PData->MeshScale));
+	}
+
+	// --- Trail VFX (Niagara) ---
+	if (PData->TrailEffect)
+	{
+		USceneComponent* AttachParent = StaticMeshComponent
+			? static_cast<USceneComponent*>(StaticMeshComponent.Get())
+			: GetRootComponent();
+
+		UNiagaraFunctionLibrary::SpawnSystemAttached(
+			PData->TrailEffect,
+			AttachParent,
+			NAME_None,
+			FVector::ZeroVector,
+			FRotator::ZeroRotator,
+			EAttachLocation::KeepRelativeOffset,
+			true  /*bAutoActivate*/,
+			true  /*bAutoDestroy*/);
+	}
+
+	// --- Audio (DA 값으로 덮어쓰기) ---
+	if (PData->FireSound)  { FireSound = PData->FireSound; }
+	FireSoundVolume = PData->FireSoundVolume;
+	if (PData->HitSound)   { HitSound = PData->HitSound; }
+	HitSoundVolume = PData->HitSoundVolume;
+
+	// --- Hit VFX ---
+	if (PData->HitEffect) { HitEffect = PData->HitEffect; }
+
+	// --- Gameplay ---
+	if (PData->DamageOverride > 0.f)
+	{
+		DamageAmount = PData->DamageOverride;
+	}
+	if (PData->Lifespan > 0.f)
+	{
+		SetLifeSpan(PData->Lifespan);
+	}
+	if (CollisionComponent && PData->CollisionRadius > 0.f)
+	{
+		CollisionComponent->SetSphereRadius(PData->CollisionRadius);
+	}
+
+	// --- Projectile Range (최대 비행 거리) ---
+	if (PData->ProjectileRange > 0.f)
+	{
+		MaxTravelDistance = PData->ProjectileRange;
+	}
+
+	// --- Trajectory ---
+	if (ProjectileMovement && PData->ProjectileSpeed > 0.f)
+	{
+		ProjectileMovement->InitialSpeed = PData->ProjectileSpeed;
+		ProjectileMovement->MaxSpeed = PData->ProjectileSpeed;
+
+		ProjectileMovement->ProjectileGravityScale =
+			(PData->TrajectoryType == EBVProjectileTrajectory::Straight) ? 0.f : 1.f;
 	}
 }
 

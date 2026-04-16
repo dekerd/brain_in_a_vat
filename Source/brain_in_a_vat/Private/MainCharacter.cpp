@@ -22,6 +22,9 @@
 #include "Collision/BVCollision.h"
 #include "Item/BVItemData.h"
 #include "Kismet/GameplayStatics.h"
+#include "Data/BVProjectileData.h"
+#include "Weapons/Projectiles/BVProjectileBase.h"
+#include "GameFramework/ProjectileMovementComponent.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -95,16 +98,16 @@ AMainCharacter::AMainCharacter()
 	*/
 
 	// Attack Sphere
-	AttackRangeSphere = CreateDefaultSubobject<USphereComponent>(TEXT("AttackRange"));
-	AttackRangeSphere->SetupAttachment(RootComponent);
-	AttackRangeSphere->InitSphereRadius(AttackRange);
+	VisionSphere = CreateDefaultSubobject<USphereComponent>(TEXT("VisionRadius"));
+	VisionSphere->SetupAttachment(RootComponent);
+	VisionSphere->InitSphereRadius(VisionRadius);
 	
-	AttackRangeSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	AttackRangeSphere->SetCollisionObjectType(ECC_WorldDynamic);
-	AttackRangeSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
-	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
-	AttackRangeSphere->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
-	AttackRangeSphere->SetGenerateOverlapEvents(true);
+	VisionSphere->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
+	VisionSphere->SetCollisionObjectType(ECC_WorldDynamic);
+	VisionSphere->SetCollisionResponseToAllChannels(ECR_Ignore);
+	VisionSphere->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap);
+	VisionSphere->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
+	VisionSphere->SetGenerateOverlapEvents(true);
 
 	// Weapon Cooltime
 	// WeaponCoolTime.Init(0.0f, 5);
@@ -116,11 +119,11 @@ void AMainCharacter::BeginPlay()
 {
 	Super::BeginPlay();
 
-	if (AttackRangeSphere)
+	if (VisionSphere)
 	{
-		AttackRangeSphere->SetSphereRadius(AttackRange);
-		AttackRangeSphere->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnAttackRangeBeginOverlap);
-		AttackRangeSphere->OnComponentEndOverlap.AddDynamic(this, &AMainCharacter::OnAttackRangeEndOverlap);
+		VisionSphere->SetSphereRadius(VisionRadius);
+		VisionSphere->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnVisionRadiusBeginOverlap);
+		VisionSphere->OnComponentEndOverlap.AddDynamic(this, &AMainCharacter::OnVisionRadiusEndOverlap);
 	}
 	
 }
@@ -188,7 +191,7 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 	return true;
 }
 
-void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+void AMainCharacter::OnVisionRadiusBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
                                                UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
 	
@@ -207,7 +210,7 @@ void AMainCharacter::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedCo
 
 }
 
-void AMainCharacter::OnAttackRangeEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
+void AMainCharacter::OnVisionRadiusEndOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, int32 OtherBodyIndex)
 {
 	if (OtherActor)
@@ -246,6 +249,22 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 	AActor* Target = FindNearestEnemyInRange();
 	if (Target)
 	{
+		// 투사체 DA의 ProjectileRange 안에 있을 때만 발사
+		if (Weapon->ProjectileClass)
+		{
+			if (const ABVProjectileBase* CDO = Weapon->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
+			{
+				if (CDO->ProjectileData && CDO->ProjectileData->ProjectileRange > 0.f)
+				{
+					const float Dist = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
+					if (Dist > CDO->ProjectileData->ProjectileRange)
+					{
+						return; // 시야 안에는 있지만 사거리 밖
+					}
+				}
+			}
+		}
+
 		FireDefaultMissile(Weapon, Target);
 		WeaponCoolTime[WeaponIndex] = 0.0f;
 		GlobalFireTimer = 0.0f;
@@ -264,46 +283,86 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 	if (!World) return;
 
 	FVector SpawnLocation = GetActorLocation();
-	FVector ZOffset = FVector(0.0f, 0.0f, 30.0f);
-	SpawnLocation += ZOffset;
-	
-	const FVector TargetLocation = Target->GetActorLocation();
-	FVector FireDir = (TargetLocation - SpawnLocation).GetSafeNormal();
+	SpawnLocation += FVector(0.0f, 0.0f, 30.0f);
 
-	FVector LaunchVelocity;
+	FVector TargetLocation = Target->GetActorLocation();
+	if (const ACharacter* TargetChar = Cast<ACharacter>(Target))
+	{
+		TargetLocation.Z += TargetChar->GetDefaultHalfHeight() * 0.5f;
+	}
+
+	// --- 투사체 CDO의 DA에서 궤적/속도 읽기 ---
+	EBVProjectileTrajectory Trajectory = EBVProjectileTrajectory::Arc; // 기존 기본값 유지
+	float ProjectileSpeed = 2500.f;
 	float ArcValue = 0.5f;
 
-	bool bHaveResult = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
-		this,
-		LaunchVelocity,
-		SpawnLocation,
-		TargetLocation,
-		GetWorld()->GetGravityZ(),
-		ArcValue);
-
-	FActorSpawnParameters Params;
-	Params.Owner = this;
-	Params.Instigator = this;
-
-	if (bHaveResult)
+	if (const ABVProjectileBase* CDO = ItemData->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
 	{
-		ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
-			ItemData->ProjectileClass,
-			SpawnLocation,
-			LaunchVelocity.Rotation(),
-			Params);
-
-		if (Projectile)
+		if (const UBVProjectileData* PData = CDO->ProjectileData)
 		{
-			Projectile->SetLaunchVelocity(LaunchVelocity);
-			if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+			Trajectory = PData->TrajectoryType;
+			if (PData->ProjectileSpeed > 0.f)
 			{
-				ProjectileRoot->IgnoreActorWhenMoving(this, true);
+				ProjectileSpeed = PData->ProjectileSpeed;
 			}
+			ArcValue = PData->ArcValue;
 		}
 	}
 
-	
+	// --- Launch 속도 계산 ---
+	FVector LaunchVelocity = FVector::ZeroVector;
+	if (Trajectory == EBVProjectileTrajectory::Arc)
+	{
+		const bool bArcOK = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
+			World,
+			LaunchVelocity,
+			SpawnLocation,
+			TargetLocation,
+			World->GetGravityZ(),
+			ArcValue);
+
+		if (!bArcOK || LaunchVelocity.IsNearlyZero())
+		{
+			// 포물선 계산 실패 시 직선 폴백
+			const FVector Direction = (TargetLocation - SpawnLocation).GetSafeNormal();
+			LaunchVelocity = Direction * ProjectileSpeed;
+			Trajectory = EBVProjectileTrajectory::Straight;
+		}
+	}
+	else
+	{
+		const FVector Direction = (TargetLocation - SpawnLocation).GetSafeNormal();
+		LaunchVelocity = Direction * ProjectileSpeed;
+	}
+
+	// --- 스폰 ---
+	FActorSpawnParameters Params;
+	Params.Owner = this;
+	Params.Instigator = this;
+	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
+
+	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
+		ItemData->ProjectileClass,
+		SpawnLocation,
+		LaunchVelocity.Rotation(),
+		Params);
+
+	if (!Projectile) return;
+
+	// 중력: 직선이면 제거, 포물선이면 유지
+	if (UProjectileMovementComponent* Movement =
+		Projectile->FindComponentByClass<UProjectileMovementComponent>())
+	{
+		Movement->ProjectileGravityScale =
+			(Trajectory == EBVProjectileTrajectory::Straight) ? 0.f : 1.f;
+	}
+
+	Projectile->SetLaunchVelocity(LaunchVelocity);
+
+	if (UPrimitiveComponent* ProjectileRoot = Cast<UPrimitiveComponent>(Projectile->GetRootComponent()))
+	{
+		ProjectileRoot->IgnoreActorWhenMoving(this, true);
+	}
 }
 
 void AMainCharacter::ConstructBuilding(FVector TargetLocation, TSubclassOf<ABVBuildingBase> BuildingClass, float InConstructionTime)

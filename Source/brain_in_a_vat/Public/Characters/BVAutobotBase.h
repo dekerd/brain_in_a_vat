@@ -114,6 +114,22 @@ public:
 	void PerformAttackHit();
 	void ApplyDamageToTarget(AActor* TargetActor);
 
+	// 원거리 공격: UnitData->ProjectileClass가 있으면 여기서 스폰. Target을 향해 포물선 발사.
+	void FireProjectile(AActor* TargetActor);
+
+protected:
+	// Tick에서 누적되는 쿨다운 타이머 (원거리 자동 발사용).
+	// MainCharacter의 GlobalFireTimer 패턴과 동일.
+	float FireCooldownTimer = 0.f;
+
+	// 원거리 자동 공격 루틴. Tick에서 호출됨.
+	void TickRangedAttack(float DeltaTime);
+
+	// BB의 AttackTargetActor를 읽어 반환 (유효하지 않으면 nullptr).
+	AActor* GetBBAttackTarget() const;
+
+public:
+
 	UPROPERTY()
 	bool bHasTarget = false;
 	

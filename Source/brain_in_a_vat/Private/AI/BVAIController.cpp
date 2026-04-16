@@ -9,6 +9,9 @@
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Navigation/CrowdFollowingComponent.h"
 #include "Headers/BVTeam.h"
+#include "Data/BVUnitData.h"
+#include "Weapons/Projectiles/BVProjectileBase.h"
+#include "Data/BVProjectileData.h"
 
 
 // Sets default values
@@ -98,18 +101,23 @@ void ABVAIController::OnPossess(APawn* InPawn)
 	// 레인이 할당된 유닛: 수선의 발 → 적 베이스 2단계 이동
 	AssignedLane = nullptr;
 	bOnLane = false;
+	LaneJoinOffset = 0.f;
 
 	if (ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(InPawn))
 	{
-		
+
 		UE_LOG(LogTemp, Warning, TEXT("Autobot의 레인 할당 상태: %s"), Autobot->AssignedLane ? TEXT("성공!") : TEXT("실패(NULL)"));
 		if (Autobot->AssignedLane)
 		{
 			AssignedLane = Autobot->AssignedLane;
 
+			// 같은 레인에 들어온 유닛들이 한 점에 모이지 않게, 합류 오프셋을 무작위로 한 번 정한다.
+			const float HalfWidth = AssignedLane->LaneWidth * 0.5f;
+			LaneJoinOffset = FMath::FRandRange(-HalfWidth, HalfWidth);
+
 			if (BlackboardComponent)
 			{
-				const FVector Foot = AssignedLane->GetPerpendicularFoot(InPawn->GetActorLocation());
+				const FVector Foot = AssignedLane->GetPerpendicularFoot(InPawn->GetActorLocation(), LaneJoinOffset);
 				BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), Foot);
 			}
 
@@ -165,7 +173,7 @@ void ABVAIController::CheckLaneArrival()
 	APawn* ControllingPawn = GetPawn();
 	if (!ControllingPawn || !AssignedLane) return;
 
-	const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation());
+	const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation(), LaneJoinOffset);
 	const float DistToFoot = FVector::Dist2D(ControllingPawn->GetActorLocation(), Foot);
 
 	// 수선의 발 100 유닛 이내면 레인 합류로 판정
@@ -213,7 +221,7 @@ void ABVAIController::SetTargetLocationFromLaneState(APawn* ControllingPawn)
 	}
 	else
 	{
-		const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation());
+		const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation(), LaneJoinOffset);
 		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), Foot);
 
 		if (!GetWorldTimerManager().IsTimerActive(LaneCheckTimerHandle))
@@ -285,9 +293,40 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 	if (ClosestTarget)
 	{
 		BlackboardComponent->SetValueAsObject(TEXT("AttackTargetActor"), ClosestTarget);
-		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), ClosestTarget->GetActorLocation());
 		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), true);
 		UE_LOG(LogTemp, Warning, TEXT("[%s] tries to attack [%s]."), *ControllingPawn->GetName(), *ClosestTarget->GetName())
+
+		// 원거리 유닛: DA의 ProjectileRange 기준으로 사정거리 바깥에서 멈춤
+		FVector TargetLoc = ClosestTarget->GetActorLocation();
+		if (ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(ControllingPawn))
+		{
+			if (Autobot->UnitData && Autobot->UnitData->ProjectileClass)
+			{
+				float ProjRange = 0.f;
+				if (const ABVProjectileBase* CDO = Autobot->UnitData->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
+				{
+					if (CDO->ProjectileData && CDO->ProjectileData->ProjectileRange > 0.f)
+					{
+						ProjRange = CDO->ProjectileData->ProjectileRange;
+					}
+				}
+
+				if (ProjRange > 0.f)
+				{
+					const float Dist = FVector::Dist(ControllingPawn->GetActorLocation(), TargetLoc);
+					if (Dist <= ProjRange * 0.9f)
+					{
+						TargetLoc = ControllingPawn->GetActorLocation();
+					}
+					else
+					{
+						const FVector Dir = (TargetLoc - ControllingPawn->GetActorLocation()).GetSafeNormal();
+						TargetLoc = TargetLoc - Dir * ProjRange * 0.8f;
+					}
+				}
+			}
+		}
+		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), TargetLoc);
 	}
 	else
 	{

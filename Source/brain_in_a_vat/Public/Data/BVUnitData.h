@@ -5,6 +5,8 @@
 #include "Headers/BVTeam.h"
 #include "BVUnitData.generated.h"
 
+class ABVProjectileBase;
+
 UCLASS(BlueprintType)
 class BRAIN_IN_A_VAT_API UBVUnitData : public UPrimaryDataAsset
 {
@@ -59,6 +61,18 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
 	float AttackRange = 20.f;
+
+	// 원거리 공격용 투사체 클래스. 비어 있으면 유닛은 근접 공격을 한다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ranged")
+	TSubclassOf<ABVProjectileBase> ProjectileClass;
+
+	// 투사체가 스폰될 스켈레탈 메시 소켓 이름. None이면 액터 위치 + 전방 오프셋에서 스폰.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ranged")
+	FName MuzzleSocketName = NAME_None;
+
+	// 소켓이 없을 때 사용되는 스폰 오프셋 (유닛 로컬 좌표계).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ranged")
+	FVector MuzzleFallbackOffset = FVector(50.f, 0.f, 80.f);
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
 	float MovementSpeed = 150.f;

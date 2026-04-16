@@ -55,6 +55,9 @@ private:
 	// true: 이미 레인에 합류 완료 → 적 베이스로 직진
 	bool bOnLane = false;
 
+	// 합류 시 이 유닛이 사용할 레인 가로 오프셋(±LaneWidth/2). OnPossess에서 한 번만 결정됨.
+	float LaneJoinOffset = 0.f;
+
 	FTimerHandle LaneCheckTimerHandle;
 
 	// 주기적으로 레인 합류 여부를 확인하고, 합류 시 목적지를 적 베이스로 전환
