@@ -75,8 +75,11 @@ void ABVPlayerController::BeginPlay()
 		UKismetRenderingLibrary::ClearRenderTarget2D(this, RT_Discovered, FLinearColor::Black);
 	}
 
-	// 0.15초마다 한 번씩(초당 약 6.6회) UpdateFogOfWar를 실행합니다.
-	// GetWorldTimerManager().SetTimer(FogTimerHandle, this, &ABVPlayerController::UpdateFogOfWar, 0.1f, true);
+	// 0.15초마다 한 번씩(초당 약 6.6회) UpdateFogOfWar 실행.
+	// 매 프레임 호출하면 K2_DrawMaterial * (Vision/Discovered 2 × 시야 제공자 수) 만큼의
+	// GPU 호출 + 렌더 스레드 동기화가 일어나서 프레임 드랍의 주요 원인이 된다.
+	UpdateFogOfWar(); // 첫 프레임이 0.15초 동안 안개 미적용 상태로 깜빡이지 않도록 즉시 1회
+	GetWorldTimerManager().SetTimer(FogTimerHandle, this, &ABVPlayerController::UpdateFogOfWar, 0.15f, true);
 	
 	// <------------------ Widgets ------------------>
 	// MainHUDWidget
@@ -228,9 +231,7 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 		}
 	}
 
-	// Fog of war
-	UpdateFogOfWar();
-
+	// Fog of war 는 BeginPlay에서 SetTimer(0.15s)로 주기 실행. 매 프레임 호출 안 함.
 }
 
 ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Other) const
@@ -270,6 +271,12 @@ void ABVPlayerController::SetupInputComponent()
 			if (CameraZoomAction)
 			{
 				EnhancedInputComponent->BindAction(CameraZoomAction, ETriggerEvent::Triggered, this, &ABVPlayerController::OnCameraZoom);
+			}
+
+			// Space + 1: 마지막 전투 현장으로 점프 (팔로우 해제)
+			if (FocusLastCombatAction)
+			{
+				EnhancedInputComponent->BindAction(FocusLastCombatAction, ETriggerEvent::Started, this, &ABVPlayerController::OnFocusLastCombatPressed);
 			}
 			
 			// [Normal Mode]
@@ -703,6 +710,35 @@ void ABVPlayerController::OnCameraCenterPressed()
 	}
 }
 
+void ABVPlayerController::OnFocusLastCombatPressed()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[Camera] FocusLastCombat pressed. bHasLastCombatLocation=%d, Loc=%s"),
+		bHasLastCombatLocation ? 1 : 0, *LastCombatLocation.ToString());
+
+	if (!bHasLastCombatLocation)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Camera] FocusLastCombat: 아직 기록된 전투 위치가 없습니다."));
+		return;
+	}
+
+	ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn());
+	if (!CamPawn)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("[Camera] FocusLastCombat: GetPawn()이 ABVRTSCameraPawn이 아님 (Pawn=%s)"),
+			GetPawn() ? *GetPawn()->GetName() : TEXT("NULL"));
+		return;
+	}
+
+	CamPawn->JumpToLocation(LastCombatLocation);
+}
+
+void ABVPlayerController::ReportCombatLocation(const FVector& WorldLocation)
+{
+	LastCombatLocation = WorldLocation;
+	bHasLastCombatLocation = true;
+	UE_LOG(LogTemp, Verbose, TEXT("[Camera] ReportCombatLocation: %s"), *WorldLocation.ToString());
+}
+
 void ABVPlayerController::UpdateFogOfWar()
 {
 	if (!RT_Discovered || !RT_Vision || !VisionBrushMaterial) return;
@@ -920,8 +956,18 @@ void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InB
 					if (TargetMesh)
 					{
 						CurrentGhostActor->InitGhost(TargetMesh, GhostMaterialBase);
-						CurrentGhostActor->SetActorScale3D(SceneRootComp->GetRelativeScale3D());
-						GhostMeshComp->SetRelativeTransform(BuildingMeshComp->GetRelativeTransform());
+
+						// DA의 BuildingScale 적용
+						const float DAScale = BuildingCDO->BuildingData ? BuildingCDO->BuildingData->BuildingScale : 1.f;
+						CurrentGhostActor->SetActorScale3D(FVector(DAScale));
+
+						// BVBuildingBase::OnConstruction과 동일한 피벗 보정 (바닥 + X/Y 중앙) + Yaw
+						const FBox MeshLocalBox = TargetMesh->GetBoundingBox();
+						const FVector MeshCenter = MeshLocalBox.GetCenter();
+						const FVector MeshPivotOffset(-MeshCenter.X, -MeshCenter.Y, -MeshLocalBox.Min.Z);
+						const float YawOffset = BuildingCDO->BuildingData ? BuildingCDO->BuildingData->BuildingYaw : 0.f;
+						GhostMeshComp->SetRelativeLocation(MeshPivotOffset);
+						GhostMeshComp->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
 					}
 				}
 			}
@@ -972,15 +1018,29 @@ void ABVPlayerController::UpdateGhostLocation()
 
 void ABVPlayerController::PlayAnnouncerVoice(EBVAnnouncerEvent EventType)
 {
-	// Check cooltime if the event is BaseUnderAttack
+	const float CurrentTime = GetWorld()->GetTimeSeconds();
+
+	// Legacy: BaseUnderAttack은 기존 전용 쿨다운 유지
 	if (EventType == EBVAnnouncerEvent::BaseUnderAttack)
 	{
-		float CurrentTime = GetWorld()->GetTimeSeconds();
 		if (CurrentTime - LastBaseAttackVoiceTime < BaseAttackVoiceCooldown)
 		{
-			return; 
+			return;
 		}
 		LastBaseAttackVoiceTime = CurrentTime;
+	}
+	else
+	{
+		// 이벤트별 쿨다운 맵에 등록된 이벤트면 간격 체크
+		if (const float* Cooldown = AnnouncerCooldowns.Find(EventType))
+		{
+			const float* LastTime = LastAnnouncerPlayTime.Find(EventType);
+			if (LastTime && CurrentTime - *LastTime < *Cooldown)
+			{
+				return;
+			}
+			LastAnnouncerPlayTime.Add(EventType, CurrentTime);
+		}
 	}
 
 	// If not, then find the appropriate announcer sound according to the event type

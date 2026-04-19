@@ -12,11 +12,16 @@
 #include "Data/BVUnitData.h"
 #include "Weapons/Projectiles/BVProjectileBase.h"
 #include "Data/BVProjectileData.h"
+#include "BVPlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values
 ABVAIController::ABVAIController()
 {
+	// [Perf] AI 컨트롤러 tick 간격 — 매 프레임 대신 0.1초 간격. BT 자체 tick은 별도.
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.TickInterval = 0.1f;
 
 	// Blackboard and Behavior Tree
 	static ConstructorHelpers::FObjectFinder<UBehaviorTree> BTAssetRef(TEXT("/Script/AIModule.BehaviorTree'/Game/AI/BT_Autobot.BT_Autobot'"));
@@ -32,16 +37,18 @@ ABVAIController::ABVAIController()
 	}
 
 	// Perception Component
+	// [Perf] 시야 반경 축소 + affiliation 좁힘. BTService_UpdateClosestEnemy가 타깃 서치를 담당하므로
+	// Perception은 보조 역할만. 불필요하면 아예 생성 안 하는 게 더 큰 성능 이득.
 	AIPerception = CreateDefaultSubobject<UAIPerceptionComponent>(TEXT("AIPerception"));
 	SightConfig = CreateDefaultSubobject<UAISenseConfig_Sight>(TEXT("SightConfig"));
 
-	SightConfig->SightRadius = 1000.f;
-	SightConfig->LoseSightRadius = 1000.f;
-	SightConfig->PeripheralVisionAngleDegrees = 360.f;
+	SightConfig->SightRadius = 600.f;
+	SightConfig->LoseSightRadius = 700.f;
+	SightConfig->PeripheralVisionAngleDegrees = 180.f; // 360도는 너무 비쌈
 
 	SightConfig->DetectionByAffiliation.bDetectEnemies = true;
-	SightConfig->DetectionByAffiliation.bDetectFriendlies = true;
-	SightConfig->DetectionByAffiliation.bDetectNeutrals = true;
+	SightConfig->DetectionByAffiliation.bDetectFriendlies = false; // 아군은 굳이 감지 X
+	SightConfig->DetectionByAffiliation.bDetectNeutrals = false;
 
 	AIPerception->ConfigureSense(*SightConfig);
 	AIPerception->SetDominantSense(SightConfig->GetSenseImplementation());
@@ -295,6 +302,17 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 		BlackboardComponent->SetValueAsObject(TEXT("AttackTargetActor"), ClosestTarget);
 		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), true);
 		UE_LOG(LogTemp, Warning, TEXT("[%s] tries to attack [%s]."), *ControllingPawn->GetName(), *ClosestTarget->GetName())
+
+		// 레인 전투 현장 보고: 플레이어 팀이 관여된 교전만 기록(아군 공격 or 아군 피격)
+		if (UWorld* World = GetWorld())
+		{
+			if (ABVPlayerController* PC = Cast<ABVPlayerController>(UGameplayStatics::GetPlayerController(World, 0)))
+			{
+				const FVector CombatMid = (ControllingPawn->GetActorLocation() + ClosestTarget->GetActorLocation()) * 0.5f;
+				PC->ReportCombatLocation(CombatMid);
+				UE_LOG(LogTemp, Warning, TEXT("[Camera] ReportCombatLocation from AI: %s"), *CombatMid.ToString());
+			}
+		}
 
 		// 원거리 유닛: DA의 ProjectileRange 기준으로 사정거리 바깥에서 멈춤
 		FVector TargetLoc = ClosestTarget->GetActorLocation();

@@ -8,9 +8,9 @@
 
 class UBVHealthComponent;
 class UProgressBar;
-class UTextBlock;
+
 /**
- * 
+ * 건물 오버헤드 위젯 — 체력바만 표시.
  */
 UCLASS()
 class BRAIN_IN_A_VAT_API UUBVBuildingOverheadWidget : public UUserWidget
@@ -20,17 +20,13 @@ class BRAIN_IN_A_VAT_API UUBVBuildingOverheadWidget : public UUserWidget
 public:
 
 	UPROPERTY(meta = (BindWidget))
-	UTextBlock* BuildingNameText;
-
-	UPROPERTY(meta = (BindWidget))
 	UProgressBar* HealthBar;
 
-	UPROPERTY(meta = (BindWidget))
-	UProgressBar* RespawnBar;
+	// 체력바의 월드 두께(월드유닛). WBP에서 바로 수정 가능.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overhead", meta = (ClampMin = "1.0"))
+	float WorldThickness = 36.f;
 
-	void SetBuildingName(FText NewName);
 	void InitWithHealthComponent(UBVHealthComponent* InHealthComponent);
-	void SetRespawnProgress(float Percent);
 
 protected:
 

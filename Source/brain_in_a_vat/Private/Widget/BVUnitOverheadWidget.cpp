@@ -6,13 +6,7 @@
 #include "GenericTeamAgentInterface.h"
 #include "Components/BVHealthComponent.h"
 #include "Components/ProgressBar.h"
-#include "Components/TextBlock.h"
 #include "Kismet/GameplayStatics.h"
-
-void UBVUnitOverheadWidget::SetUnitName(FText NewName)
-{
-	if (UnitNameText) UnitNameText->SetText(NewName);
-}
 
 void UBVUnitOverheadWidget::InitWithHealthComponent(class UBVHealthComponent* InHealthComponent)
 {

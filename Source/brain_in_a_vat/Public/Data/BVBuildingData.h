@@ -7,6 +7,7 @@
 
 class ABVBuildingBase;
 class ABVAutobotBase;
+class UUserWidget;
 
 UCLASS(BlueprintType)
 class BRAIN_IN_A_VAT_API UBVBuildingData : public UPrimaryDataAsset
@@ -35,6 +36,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
 	TObjectPtr<UStaticMesh> BuildingMesh;
 
+	// 건물 메시의 균일 스케일. 1.0 = 원본 크기.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction", meta = (ClampMin = "0.01"))
+	float BuildingScale = 1.f;
+
+	// 건물 메시의 Z축(Yaw) 회전 오프셋. 메시가 잘못된 방향을 보고 있을 때 보정용.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
+	float BuildingYaw = 0.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
 	float ConstructionTime = 5.0f;
 
@@ -62,4 +71,8 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spawn Unit")
 	float SpawnInterval = 10.0f;
+
+	// UI
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<UUserWidget> OverheadWidgetClass;
 };

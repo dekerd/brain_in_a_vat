@@ -112,6 +112,18 @@ void ABVRTSCameraPawn::CenterOnActor(AActor* TargetActor)
 	}
 }
 
+void ABVRTSCameraPawn::JumpToLocation(const FVector& WorldLocation)
+{
+	// 캐릭터 추적을 해제하고 지정된 위치로 즉시 이동
+	bIsTracking = false;
+	TargetToFollow = nullptr;
+
+	// Z는 유지(카메라 Rig의 높이는 그대로 둠)
+	FVector NewLoc = WorldLocation;
+	NewLoc.Z = GetActorLocation().Z;
+	SetActorLocation(NewLoc);
+}
+
 void ABVRTSCameraPawn::ZoomCamera(float ZoomValue)
 {
 	if (ZoomValue != 0.0f)

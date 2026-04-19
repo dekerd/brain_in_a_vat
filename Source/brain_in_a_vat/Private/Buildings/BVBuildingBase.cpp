@@ -77,10 +77,14 @@ ABVBuildingBase::ABVBuildingBase()
 	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidget"));
 	OverheadWidgetComponent->SetupAttachment(RootComponent);
 	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
-	OverheadWidgetComponent->SetDrawSize(FVector2D(200.f, 30.f)); 
-	OverheadWidgetComponent->SetRelativeScale3D(FVector(0.6f, 0.6f, 0.6f)); // 크기 조절
+	OverheadWidgetComponent->SetDrawSize(FVector2D(120.f, 12.f));
+	OverheadWidgetComponent->SetRelativeScale3D(FVector(1.f));
 	OverheadWidgetComponent->SetUsingAbsoluteRotation(true);
-	
+	// [Perf] Automatic = 엔진이 자동 관리. 화면 밖에서도 tick 유지해 안정적으로 표시.
+	OverheadWidgetComponent->SetTickMode(ETickMode::Automatic);
+	OverheadWidgetComponent->SetTickWhenOffscreen(true);
+	OverheadWidgetComponent->SetGenerateOverlapEvents(false);
+	OverheadWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void ABVBuildingBase::Tick(float DeltaTime)
@@ -96,10 +100,7 @@ void ABVBuildingBase::Tick(float DeltaTime)
 	
 	float Percent = FMath::Fmod(ElapsedTime, RespawnInterval) / RespawnInterval;
 
-	if (OverheadWidget)
-	{
-		OverheadWidget->SetRespawnProgress(Percent);
-	}
+	// 리스폰 프로그레스는 빌딩 상세 패널(BVBuildingDetailWidget)에서 표시.
 }
 
 void ABVBuildingBase::DestroyBuilding()
@@ -160,10 +161,22 @@ void ABVBuildingBase::OnConstruction(const FTransform& Transform)
 	{
 		if (BuildingData->BuildingMesh)
 		{
-			// 컴포넌트의 메시를 데이터 에셋의 메시로 자동 덮어쓰기
 			StaticMeshComponent->SetStaticMesh(BuildingData->BuildingMesh);
+
+			// 메시 바운딩 박스를 읽어서 피벗을 바닥 중앙으로 보정.
+			// X/Y는 메시 중앙, Z는 바닥면이 Actor 원점(0,0,0)에 오도록 오프셋.
+			const FBox MeshBounds = BuildingData->BuildingMesh->GetBoundingBox();
+			const FVector MeshCenter = MeshBounds.GetCenter();
+			StaticMeshComponent->SetRelativeLocation(FVector(-MeshCenter.X, -MeshCenter.Y, -MeshBounds.Min.Z));
 		}
-		
+
+		// DA에서 Yaw 회전 오프셋 적용 (메시 방향 보정)
+		StaticMeshComponent->SetRelativeRotation(FRotator(0.f, BuildingData->BuildingYaw, 0.f));
+
+		// DA에서 균일 스케일 적용
+		const float S = BuildingData->BuildingScale;
+		SetActorScale3D(FVector(S));
+
 		// 아이콘 정보도 동기화 (UI에서 바로 쓸 수 있도록)
 		if (BuildingData->BuildingIcon)
 		{
@@ -173,10 +186,45 @@ void ABVBuildingBase::OnConstruction(const FTransform& Transform)
 
 	if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh() && BoxComponent)
 	{
-		FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+		const FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+		const FVector MeshCenter = MeshBounds.GetCenter();
 		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
+		// 메시와 동일하게 바닥+중앙 피벗 보정
+		BoxComponent->SetRelativeLocation(FVector(-MeshCenter.X, -MeshCenter.Y, -MeshBounds.Min.Z));
+		// 메시와 동일한 Yaw 회전 적용
+		const float YawOffset = BuildingData ? BuildingData->BuildingYaw : 0.f;
+		BoxComponent->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
 	}
 	
+}
+
+void ABVBuildingBase::FixPivotToBottom()
+{
+	if (!StaticMeshComponent || !StaticMeshComponent->GetStaticMesh()) return;
+
+	const FBox MeshBounds = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+	const FVector MeshCenter = MeshBounds.GetCenter();
+	const FVector Offset(-MeshCenter.X, -MeshCenter.Y, -MeshBounds.Min.Z);
+
+	StaticMeshComponent->SetRelativeLocation(Offset);
+
+	// DA Yaw 오프셋도 함께 반영
+	const float YawOffset = BuildingData ? BuildingData->BuildingYaw : 0.f;
+	StaticMeshComponent->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
+
+	if (BoxComponent)
+	{
+		BoxComponent->SetBoxExtent(MeshBounds.GetExtent());
+		BoxComponent->SetRelativeLocation(Offset);
+		BoxComponent->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
+	}
+
+#if WITH_EDITOR
+	// 에디터에서 변경 사항이 dirty로 마크되어 저장 시 반영되도록.
+	Modify();
+	if (StaticMeshComponent) StaticMeshComponent->Modify();
+	if (BoxComponent) BoxComponent->Modify();
+#endif
 }
 
 FGenericTeamId ABVBuildingBase::GetTeamId_Implementation() const
@@ -194,9 +242,19 @@ void ABVBuildingBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// Get actual actor size
-	const FBoxSphereBounds Bounds = StaticMeshComponent->CalcBounds(StaticMeshComponent->GetComponentTransform());
-	const float TopZ = Bounds.Origin.Z + Bounds.BoxExtent.Z;
+	// 메시 로컬 바운딩 박스의 Top 중앙점을 월드로 변환 → 메시가 시각적으로 그려지는 위치 위
+	// (BoxComponent나 RelativeLocation 상태에 의존하지 않음)
+	FVector MeshTopCenterWorld = GetActorLocation();
+	FVector MeshWorldExtent(50.f);
+	if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh())
+	{
+		const FBox LocalBox = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+		const FVector LocalTopCenter(LocalBox.GetCenter().X, LocalBox.GetCenter().Y, LocalBox.Max.Z);
+		MeshTopCenterWorld = StaticMeshComponent->GetComponentTransform().TransformPosition(LocalTopCenter);
+		MeshWorldExtent = StaticMeshComponent->Bounds.BoxExtent;
+	}
+	const FVector BoundsCenter = MeshTopCenterWorld;
+	const float TopZ = MeshTopCenterWorld.Z;
 
 	// [GAS] Initialize ASC
 
@@ -219,6 +277,12 @@ void ABVBuildingBase::BeginPlay()
 	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
 	StimuliSourceComponent->RegisterWithPerceptionSystem();
 
+	// DA에 위젯 클래스가 지정되어 있으면 그걸 우선 사용
+	if (BuildingData && BuildingData->OverheadWidgetClass)
+	{
+		OverheadWidgetClass = BuildingData->OverheadWidgetClass;
+	}
+
 	if (OverheadWidgetClass && OverheadWidgetComponent)
 	{
 		OverheadWidgetComponent->SetWidgetClass(OverheadWidgetClass);
@@ -227,18 +291,29 @@ void ABVBuildingBase::BeginPlay()
 	// Building Overhead Widget
 	if (OverheadWidgetComponent)
 	{
-		// DrawSize는 UMG 디자인 캔버스 크기로 고정(내용물 잘리지 않게).
-		// 실제 보이는 월드 크기는 Scale3D로 조절한다 — 건물 메시 풋프린트에 비례.
-		const FVector2D WidgetDesignSize(200.f, 30.f);
-		const float BuildingFootprint = FMath::Max(Bounds.BoxExtent.X, Bounds.BoxExtent.Y) * 2.0f;
-		const float TargetWorldWidth  = FMath::Clamp(BuildingFootprint * 0.6f, 120.f, 280.f);
-		const float WidgetScale       = TargetWorldWidth / WidgetDesignSize.X;
-		OverheadWidgetComponent->SetDrawSize(WidgetDesignSize);
-		OverheadWidgetComponent->SetRelativeScale3D(FVector(WidgetScale));
+		// 두께는 WBP의 WorldThickness 프로퍼티로 결정, 길이만 풋프린트에 비례.
+		const FVector2D WidgetDesignSize(120.f, 12.f);
+
+		// 먼저 UserWidget을 가져와서 WorldThickness 읽기 (없으면 기본 36)
+		float WorldThickness = 36.f;
+		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
+		{
+			if (UUBVBuildingOverheadWidget* BuildingWidget = Cast<UUBVBuildingOverheadWidget>(UserWidget))
+			{
+				WorldThickness = BuildingWidget->WorldThickness;
+			}
+		}
+		const float BaseScale = WorldThickness / WidgetDesignSize.Y; // DrawSize.Y(=12) × scale = WorldThickness
+
+		const float BuildingFootprint = FMath::Max(MeshWorldExtent.X, MeshWorldExtent.Y) * 2.0f;
+		const float TargetWorldWidth  = FMath::Max(BuildingFootprint * 1.0f, 40.f);
+		const float TargetDrawWidth   = TargetWorldWidth / BaseScale;
+		OverheadWidgetComponent->SetDrawSize(FVector2D(TargetDrawWidth, WidgetDesignSize.Y));
+		OverheadWidgetComponent->SetWorldScale3D(FVector(BaseScale));
 
 		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
-		FVector WidgetLoc = Bounds.Origin;
-		WidgetLoc.Z = TopZ + 100.0f;
+		FVector WidgetLoc = BoundsCenter;
+		WidgetLoc.Z = TopZ + 120.0f;  // 건물 위로 좀 더 띄우기
 		OverheadWidgetComponent->SetWorldLocation(WidgetLoc);
 		OverheadWidgetComponent->SetWorldRotation(FRotator(65.f, 180.f, 0.f));
 		
@@ -247,7 +322,6 @@ void ABVBuildingBase::BeginPlay()
 			OverheadWidget = Cast<UUBVBuildingOverheadWidget>(UserWidget);
 			if (OverheadWidget)
 			{
-				OverheadWidget->SetBuildingName(BuildingName);
 				OverheadWidget->InitWithHealthComponent(HealthComponent);
 			}
 		}

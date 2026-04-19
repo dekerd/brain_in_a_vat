@@ -32,7 +32,11 @@
 // Sets default values
 ABVAutobotBase::ABVAutobotBase()
 {
-	// AI 
+	// [Perf] Actor tick 간격 — Fade/RangedAttack용이라 30Hz면 충분 (매 프레임 대비 ~50% 감소)
+	PrimaryActorTick.bCanEverTick = true;
+	PrimaryActorTick.TickInterval = 0.0333f;
+
+	// AI
 	AIControllerClass = ABVAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
@@ -61,8 +65,22 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 
-	GetCharacterMovement()->bUseRVOAvoidance = true;
-	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
+	// [Perf] RVO Avoidance는 O(N²) 비용 — 유닛 많으면 주범. 필요하면 짧은 반경만 체크.
+	GetCharacterMovement()->bUseRVOAvoidance = false;
+	GetCharacterMovement()->AvoidanceConsiderationRadius = 100.f;
+
+	// [Perf] CharacterMovement tick 최적화
+	GetCharacterMovement()->bRunPhysicsWithNoController = false;
+	GetCharacterMovement()->NavAgentProps.bCanCrouch = false;
+	GetCharacterMovement()->NavAgentProps.bCanFly = false;
+	GetCharacterMovement()->NavAgentProps.bCanSwim = false;
+
+	// [Perf] CharacterMovement 자체 tick 주기 제한 (20Hz) — 최저선.
+	// RTS 탑다운에선 이 정도로도 부드럽게 보임. 네이티브 이동 보간이 커버.
+	GetCharacterMovement()->PrimaryComponentTick.TickInterval = 0.05f;
+
+	// [Perf] Capsule overlap 이벤트 비활성화 (충돌은 유지)
+	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
 
 	// HealthComponent
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
@@ -72,10 +90,37 @@ ABVAutobotBase::ABVAutobotBase()
 	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidgetComponent"));
 	OverheadWidgetComponent->SetupAttachment(RootComponent);
 	
-	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World); 
-	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f)); 
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f));
 	OverheadWidgetComponent->SetRelativeScale3D(FVector(0.5f, 0.5f, 0.5f)); // 이 값을 조절하여 게임 내 위젯 크기를 맞추세요.
 	OverheadWidgetComponent->SetUsingAbsoluteRotation(true); // 유닛이 회전해도 위젯은 돌아가지 않도록 고정!
+	// [Perf] Automatic = 엔진이 자동 관리. TickWhenOffscreen=true로 첫 렌더 놓치는 유닛 없게.
+	OverheadWidgetComponent->SetTickMode(ETickMode::Automatic);
+	OverheadWidgetComponent->SetTickWhenOffscreen(true);
+	OverheadWidgetComponent->SetGenerateOverlapEvents(false);
+	OverheadWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+
+	// [Perf] 스켈레탈 메시 애니메이션 업데이트 레이트 최적화 (URO)
+	// 카메라에서 멀거나 화면 밖 유닛은 애니메이션을 낮은 빈도로 갱신.
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		MeshComp->bEnableUpdateRateOptimizations = true;
+		MeshComp->bDisplayDebugUpdateRateOptimizations = false;
+		// 보이지 않을 때 애니/본/몽타주 업데이트 스킵
+		MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
+
+		// [Perf] 물리 시뮬레이션 안 쓰면 본 업데이트 skip
+		MeshComp->KinematicBonesUpdateType = EKinematicBonesUpdateToPhysics::SkipAllBones;
+
+		// [Perf] 스켈레탈 메시 overlap만 비활성화 (Hoverable 콜리전은 유지 - 선택/호버용)
+		MeshComp->SetGenerateOverlapEvents(false);
+
+		// [Perf] 그림자 비활성화
+		MeshComp->SetCastShadow(false);
+
+		// [Perf] 메시 tick 20Hz — URO가 가까운 유닛은 매 프레임 유지하므로 시각적 열화 미미.
+		MeshComp->PrimaryComponentTick.TickInterval = 0.05f;
+	}
 
 	// Gameplay Ability System (GAS)
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
@@ -98,6 +143,26 @@ ABVAutobotBase::ABVAutobotBase()
 
 }
 
+void ABVAutobotBase::FixPivotToBottom()
+{
+	USkeletalMeshComponent* MeshComp = GetMesh();
+	UCapsuleComponent* Capsule = GetCapsuleComponent();
+	if (!MeshComp || !Capsule || !MeshComp->GetSkeletalMeshAsset()) return;
+
+	const float HalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+	const FBoxSphereBounds& MeshBounds = MeshComp->GetSkeletalMeshAsset()->GetBounds();
+	const float MeshMinZ = MeshBounds.Origin.Z - MeshBounds.BoxExtent.Z;
+	const float ZOffset = -HalfHeight - MeshMinZ;
+
+	const FVector CurrentLoc = MeshComp->GetRelativeLocation();
+	MeshComp->SetRelativeLocation(FVector(CurrentLoc.X, CurrentLoc.Y, ZOffset));
+
+#if WITH_EDITOR
+	Modify();
+	MeshComp->Modify();
+#endif
+}
+
 void ABVAutobotBase::OnConstruction(const FTransform& Transform)
 {
 	Super::OnConstruction(Transform);
@@ -115,7 +180,26 @@ void ABVAutobotBase::OnConstruction(const FTransform& Transform)
 			GetMesh()->SetAnimInstanceClass(UnitData->AnimClass);
 		}
 	}
-	
+
+	// 메시의 발을 캡슐 바닥에 맞춰 자동 보정.
+	// 피벗이 발에 있든(Min.Z=0) 중앙에 있든(Min.Z<0) 올바른 Z 오프셋을 계산.
+	// mesh.Z = -CapsuleHalfHeight - MeshBounds.Min.Z
+	if (USkeletalMeshComponent* MeshComp = GetMesh())
+	{
+		if (USkeletalMesh* SkelMesh = MeshComp->GetSkeletalMeshAsset())
+		{
+			if (UCapsuleComponent* Capsule = GetCapsuleComponent())
+			{
+				const float HalfHeight = Capsule->GetUnscaledCapsuleHalfHeight();
+				const FBoxSphereBounds& MeshBounds = SkelMesh->GetBounds();
+				const float MeshMinZ = MeshBounds.Origin.Z - MeshBounds.BoxExtent.Z;
+				const float ZOffset = -HalfHeight - MeshMinZ;
+
+				const FVector CurrentLoc = MeshComp->GetRelativeLocation();
+				MeshComp->SetRelativeLocation(FVector(CurrentLoc.X, CurrentLoc.Y, ZOffset));
+			}
+		}
+	}
 }
 
 
@@ -123,6 +207,9 @@ void ABVAutobotBase::OnConstruction(const FTransform& Transform)
 void ABVAutobotBase::BeginPlay()
 {
 	Super::BeginPlay();
+
+	// [Perf] URO는 생성자에서 bEnableUpdateRateOptimizations=true로 켜둠.
+	// 화면 안 보이는 유닛은 본/포즈 tick 스킵 (VisibilityBasedAnimTickOption 설정됨).
 
 	// Get the height of the autobot
 	float TopZ = GetActorLocation().Z;
@@ -172,32 +259,34 @@ void ABVAutobotBase::BeginPlay()
 		OverheadWidgetComponent->SetUsingAbsoluteRotation(true); 
 		OverheadWidgetComponent->SetWorldRotation(FRotator(65.f, 180.f, 0.f)); // 카메라 정면 응시
 
-		// DrawSize는 UMG 디자인 캔버스 크기로 고정(내용물 잘리지 않게).
-		// 실제 보이는 월드 크기는 Scale3D로 조절한다 — 유닛 캡슐 크기에 비례.
-		const FVector2D WidgetDesignSize(250.f, 60.f);
+		// 두께는 WBP의 WorldThickness 프로퍼티로 결정, 길이만 유닛 지름에 비례.
+		const FVector2D WidgetDesignSize(120.f, 12.f);
+
+		float WorldThickness = 12.f;
+		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
+		{
+			if (UBVUnitOverheadWidget* UnitWidget = Cast<UBVUnitOverheadWidget>(UserWidget))
+			{
+				WorldThickness = UnitWidget->WorldThickness;
+			}
+		}
+		const float BaseScale = WorldThickness / WidgetDesignSize.Y;
+
 		const float UnitDiameter     = GetCapsuleComponent() ? GetCapsuleComponent()->GetScaledCapsuleRadius() * 2.0f : 60.f;
-		const float TargetWorldWidth = FMath::Clamp(UnitDiameter * 0.8f, 50.f, 100.f);
-		const float WidgetScale      = TargetWorldWidth / WidgetDesignSize.X;
-		OverheadWidgetComponent->SetDrawSize(WidgetDesignSize);
-		OverheadWidgetComponent->SetRelativeScale3D(FVector(WidgetScale));
+		const float TargetWorldWidth = FMath::Max(UnitDiameter * 1.0f, 40.f);
+		const float TargetDrawWidth  = TargetWorldWidth / BaseScale;
+		OverheadWidgetComponent->SetDrawSize(FVector2D(TargetDrawWidth, WidgetDesignSize.Y));
+		OverheadWidgetComponent->SetWorldScale3D(FVector(BaseScale));
 
 		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
 		FVector WidgetLoc = GetActorLocation();
-		WidgetLoc.Z = TopZ + 50.0f;
+		WidgetLoc.Z = TopZ + 20.0f;  // 이름이 없으니 머리 바로 위로 가깝게
 		OverheadWidgetComponent->SetWorldLocation(WidgetLoc);
 		
 		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
 		{
 			if (UBVUnitOverheadWidget* OverheadWidget = Cast<UBVUnitOverheadWidget>(UserWidget))
 			{
-				if (UnitData)
-				{
-					OverheadWidget->SetUnitName(FText::FromName(UnitData->UnitName));
-				}
-				else
-				{
-					OverheadWidget->SetUnitName(FText::FromString(TEXT("Unknown")));
-				}
 				OverheadWidget->InitWithHealthComponent(HealthComponent);
 			}
 		}
@@ -266,15 +355,26 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 	// 원거리 설정이 없는 유닛은 스킵 (기존 근접 플로우 유지)
 	if (!UnitData || !UnitData->ProjectileClass) return;
 
-	// 매 틱 시작 시 idle 강제는 일단 OFF. 사거리 안에서 사격 중일 때만 아래에서 다시 ON.
-	// (이걸 안 하면 타겟이 사라진 뒤에도 idle 포즈로 미끄러져 다님)
 	UBVAnimInstance* AnimInst = Cast<UBVAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr);
-	if (AnimInst)
-	{
-		AnimInst->SetForceIdle(false);
-	}
 
-	if (bIsDead) return;
+	// 전투 포즈 해제 — idle 강제 OFF + 재생 중인 공격 몽타주 정지.
+	// 사거리 안에서 사격 중이면 아래에서 다시 idle ON / 몽타주는 FireProjectile에서 재생.
+	auto ExitCombatPose = [&]()
+	{
+		if (AnimInst) AnimInst->SetForceIdle(false);
+		if (AttackMontage)
+		{
+			if (UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+			{
+				if (Anim->Montage_IsPlaying(AttackMontage))
+				{
+					Anim->Montage_Stop(0.2f, AttackMontage);
+				}
+			}
+		}
+	};
+
+	if (bIsDead) { ExitCombatPose(); return; }
 
 	// --- 사거리: DA의 ProjectileRange (투사체 최대 비행 거리) ---
 	float ProjectileRange = 0.f;
@@ -351,7 +451,7 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 	// --- 쿨다운 누적 ---
 	FireCooldownTimer += DeltaTime;
 
-	if (!Target) return;
+	if (!Target) { ExitCombatPose(); return; }
 
 	const float DistToTarget = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
 
@@ -362,22 +462,18 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 		if (AAIController* AIController = Cast<AAIController>(GetController()))
 		{
 			AIController->StopMovement();
-			// 적 방향으로 회전 유지
 			AIController->SetFocus(Target);
 		}
-		// AnimBP가 GroundSpeed로 idle/walk 판단하므로 velocity까지 강제로 0으로
 		if (UCharacterMovementComponent* Move = GetCharacterMovement())
 		{
 			Move->StopMovementImmediately();
 		}
+		if (AnimInst) AnimInst->SetForceIdle(true);
 	}
-
-	// MoveTo가 매 프레임 살짝 velocity를 건드려서 walking 모션이 깜빡이는 걸 방지.
-	// AnimBP 레벨에서 bIsIdle을 강제로 true로 박아둔다 (사거리 안에서만).
-	// 사거리 밖이거나 타겟이 없으면 함수 진입부에서 이미 false로 리셋된다.
-	if (AnimInst && bInFireRange)
+	else
 	{
-		AnimInst->SetForceIdle(true);
+		// 사거리 밖: 전투 포즈 해제 → locomotion SM이 정상 작동 (걷기 모션)
+		ExitCombatPose();
 	}
 
 	// --- 발사: 쿨다운 + 사거리 안 ---
@@ -784,7 +880,18 @@ void ABVAutobotBase::ApplyDamageToTarget(AActor* TargetActor)
 	SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -Damage);
 
 	ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
-	
+
+	// 레인 전투 위치 기록: 공격자/피격자 중간 지점을 "전투 현장"으로 PC에 보고
+	if (UWorld* World = GetWorld())
+	{
+		if (ABVPlayerController* PC = Cast<ABVPlayerController>(UGameplayStatics::GetPlayerController(World, 0)))
+		{
+			const FVector AttackerLoc = GetActorLocation();
+			const FVector TargetLoc = TargetActor->GetActorLocation();
+			const FVector CombatMid = (AttackerLoc + TargetLoc) * 0.5f;
+			PC->ReportCombatLocation(CombatMid);
+		}
+	}
 }
 
 

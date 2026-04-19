@@ -6,6 +6,8 @@
 #include "Components/SphereComponent.h"
 #include "GAS/GAStags.h"
 #include "Weapons/Projectiles/BVLaserBeamBase.h"
+#include "BVPlayerController.h"
+#include "Kismet/GameplayStatics.h"
 
 
 // Sets default values
@@ -188,6 +190,16 @@ void ABVDefenseTower::ApplyDamage(AActor* Target)
 	{
 		SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -AttackDamage);
 		ASC->ApplyGameplayEffectSpecToTarget(*SpecHandle.Data.Get(), TargetASC);
+
+		// 전투 위치 기록
+		if (UWorld* World = GetWorld())
+		{
+			if (ABVPlayerController* PC = Cast<ABVPlayerController>(UGameplayStatics::GetPlayerController(World, 0)))
+			{
+				const FVector CombatMid = (GetActorLocation() + Target->GetActorLocation()) * 0.5f;
+				PC->ReportCombatLocation(CombatMid);
+			}
+		}
 	}
 }
 

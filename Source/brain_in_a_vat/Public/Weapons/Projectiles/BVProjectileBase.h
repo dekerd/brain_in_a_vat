@@ -64,7 +64,14 @@ protected:
 	float HitSoundVolume = 1.0f;
 
 	UPROPERTY(EditAnywhere, Category = "VFX")
+	TObjectPtr<class UNiagaraSystem> HitNiagaraEffect;
+
+	UPROPERTY(EditAnywhere, Category = "VFX")
 	TObjectPtr<class UParticleSystem> HitEffect;
+
+	// Niagara 우선, Cascade 폴백으로 HitEffect를 재생하는 헬퍼.
+	// HitActor가 있으면 충돌 지점과 대상 중심 사이(70%)로 이펙트 위치를 보정한다.
+	void SpawnHitVFX(AActor* HitActor = nullptr);
 
 // GAS
 public:

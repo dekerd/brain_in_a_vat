@@ -110,12 +110,32 @@ void ABVProjectileBase::Tick(float DeltaTime)
 	}
 }
 
+void ABVProjectileBase::SpawnHitVFX(AActor* HitActor)
+{
+	// 피격 대상이 있으면, 충돌 지점(투사체 위치)과 대상 중심 사이를 70% 보간.
+	// "너무 바깥도, 너무 정중앙도 아닌" 자연스러운 위치.
+	FVector SpawnLoc = GetActorLocation();
+	if (HitActor)
+	{
+		SpawnLoc = FMath::Lerp(GetActorLocation(), HitActor->GetActorLocation(), 0.7f);
+	}
+	const FRotator SpawnRot = GetActorRotation();
+
+	if (HitNiagaraEffect)
+	{
+		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+			GetWorld(), HitNiagaraEffect, SpawnLoc, SpawnRot);
+	}
+	else if (HitEffect)
+	{
+		UGameplayStatics::SpawnEmitterAtLocation(
+			GetWorld(), HitEffect, SpawnLoc, SpawnRot);
+	}
+}
+
 void ABVProjectileBase::Explode()
 {
-	if (HitEffect)
-	{
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, GetActorLocation(), GetActorRotation());
-	}
+	SpawnHitVFX();
 	if (HitSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
@@ -159,7 +179,8 @@ void ABVProjectileBase::ApplyDataAsset()
 	if (PData->HitSound)   { HitSound = PData->HitSound; }
 	HitSoundVolume = PData->HitSoundVolume;
 
-	// --- Hit VFX ---
+	// --- Hit VFX (Niagara 우선, Cascade 폴백) ---
+	if (PData->HitNiagaraEffect) { HitNiagaraEffect = PData->HitNiagaraEffect; }
 	if (PData->HitEffect) { HitEffect = PData->HitEffect; }
 
 	// --- Gameplay ---
@@ -263,11 +284,8 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
 	}
 
-	if (HitEffect)
-	{
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, GetActorLocation(), GetActorRotation());
-	}
-	
+	SpawnHitVFX(OtherActor);
+
 	Destroy();
 
 }
@@ -275,16 +293,13 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 void ABVProjectileBase::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	if (HitEffect)
-	{
-		UGameplayStatics::SpawnEmitterAtLocation(GetWorld(), HitEffect, GetActorLocation(), GetActorRotation());
-	}
+	SpawnHitVFX(OtherActor);
 
 	if (HitSound)
 	{
 		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
 	}
-    
+
 	Destroy();
 }
 

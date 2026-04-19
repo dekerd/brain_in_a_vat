@@ -143,6 +143,10 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	TObjectPtr<class UInputAction> CameraZoomAction;
 
+	// Space+1: 레인에서 가장 마지막 전투 현장을 보여준다. (팔로우 해제)
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> FocusLastCombatAction;
+
 	UPROPERTY()
 	bool bIsWaitingForArrival = false;
 
@@ -153,6 +157,22 @@ protected:
 	void OnCameraZoom(const FInputActionValue& Value);
 	void OnCameraPan(const FInputActionValue& Value);
 	void OnCameraCenterPressed();
+	void OnFocusLastCombatPressed();
+
+public:
+	// 전투 발생 시 유닛/타워가 호출. 가장 최근 전투 좌표를 기록한다.
+	UFUNCTION(BlueprintCallable, Category = "Camera|Combat")
+	void ReportCombatLocation(const FVector& WorldLocation);
+
+	UFUNCTION(BlueprintPure, Category = "Camera|Combat")
+	bool HasLastCombatLocation() const { return bHasLastCombatLocation; }
+
+protected:
+	UPROPERTY()
+	FVector LastCombatLocation = FVector::ZeroVector;
+
+	UPROPERTY()
+	bool bHasLastCombatLocation = false;
 
 // Fog of War
 public:
@@ -246,9 +266,16 @@ protected:
 	TMap<EBVAnnouncerEvent, TObjectPtr<class USoundBase>> AnnouncerVoices;
 	
 	float LastBaseAttackVoiceTime = -100.0f;
-	
+
 	UPROPERTY(EditDefaultsOnly, Category = "Audio|Announcer")
 	float BaseAttackVoiceCooldown = 10.0f;
+
+	// 이벤트별 쿨다운 (초). 여기 등록 안 된 이벤트는 쿨다운 없이 재생됨.
+	UPROPERTY(EditDefaultsOnly, Category = "Audio|Announcer")
+	TMap<EBVAnnouncerEvent, float> AnnouncerCooldowns;
+
+	// 이벤트별 마지막 재생 시각 (런타임에 갱신)
+	TMap<EBVAnnouncerEvent, float> LastAnnouncerPlayTime;
 
 	UPROPERTY(EditDefaultsOnly, Category = "Audio|Announcer")
 	float AnnouncerVolumeMultiplier = 2.0f;

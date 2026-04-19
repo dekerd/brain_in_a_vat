@@ -37,7 +37,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<class UNiagaraSystem> TrailEffect;
 
-	// 충돌 시 재생되는 파티클 (선택)
+	// 충돌 시 재생되는 Niagara 이펙트 (우선). 할당되어 있으면 Cascade는 무시됨.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
+	TObjectPtr<class UNiagaraSystem> HitNiagaraEffect;
+
+	// 충돌 시 재생되는 Cascade 파티클 (Niagara가 없을 때 폴백)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<class UParticleSystem> HitEffect;
 

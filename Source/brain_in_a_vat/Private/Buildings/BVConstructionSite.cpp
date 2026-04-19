@@ -193,17 +193,30 @@ void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildi
 		ABVBuildingBase* DefaultBuilding = Cast<ABVBuildingBase>(TargetBuildingClass->GetDefaultObject());
 		if (DefaultBuilding)
 		{
+			// DA의 BuildingScale을 Actor 전체 스케일로 적용 (고스트/실제 메시/박스 모두 영향)
+			const UBVBuildingData* BData = DefaultBuilding->BuildingData;
+			const float DAScale = BData ? BData->BuildingScale : 1.f;
+			SetActorScale3D(FVector(DAScale));
+
+			// DA 메시가 있으면 우선 사용 (BP에 에셋 안 들어있어도 동작)
+			UStaticMesh* DAMesh = BData ? ToRawPtr(BData->BuildingMesh) : nullptr;
+
 			if (DefaultBuilding->GetStaticMeshComponent())
 			{
-				UStaticMesh* TargetMesh = DefaultBuilding->GetStaticMeshComponent()->GetStaticMesh();
+				UStaticMesh* TargetMesh = DAMesh ? DAMesh : ToRawPtr(DefaultBuilding->GetStaticMeshComponent()->GetStaticMesh());
 				if (TargetMesh && MeshComponent)
 				{
 					MeshComponent->SetStaticMesh(TargetMesh);
-					MeshComponent->SetRelativeScale3D(DefaultBuilding->GetStaticMeshComponent()->GetRelativeScale3D());
-					MeshComponent->SetRelativeLocationAndRotation(
-						DefaultBuilding->GetStaticMeshComponent()->GetRelativeLocation(),
-						DefaultBuilding->GetStaticMeshComponent()->GetRelativeRotation()
-					);
+
+					// BVBuildingBase::OnConstruction과 동일한 피벗 보정 (바닥 + X/Y 중앙)
+					// 및 DA BuildingYaw 회전 적용
+					const FBox MeshLocalBox = TargetMesh->GetBoundingBox();
+					const FVector MeshCenter = MeshLocalBox.GetCenter();
+					const FVector MeshPivotOffset(-MeshCenter.X, -MeshCenter.Y, -MeshLocalBox.Min.Z);
+					const float YawOffset = BData ? BData->BuildingYaw : 0.f;
+
+					MeshComponent->SetRelativeLocation(MeshPivotOffset);
+					MeshComponent->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
 
 					RealMeshDMI.Empty();
 					int32 NumMaterials = MeshComponent->GetNumMaterials();
@@ -220,9 +233,10 @@ void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildi
 					if (GhostMeshComponent)
 					{
 						GhostMeshComponent->SetStaticMesh(TargetMesh);
-						GhostMeshComponent->SetRelativeTransform(DefaultBuilding->GetStaticMeshComponent()->GetRelativeTransform());
-						FVector SlightlyLargerScale = MeshComponent->GetRelativeScale3D() * 1.025f;
-						GhostMeshComponent->SetRelativeScale3D(SlightlyLargerScale);
+						// 실제 메시와 동일한 피벗/회전 적용, 스케일만 살짝 키움
+						GhostMeshComponent->SetRelativeLocation(MeshPivotOffset);
+						GhostMeshComponent->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
+						GhostMeshComponent->SetRelativeScale3D(FVector(1.025f));
 
 						if (GhostMaterialBase)
 						{
@@ -242,17 +256,24 @@ void ABVConstructionSite::InitConstruction(TSubclassOf<ABVBuildingBase> InBuildi
 				}
 			}
 
-			if (DefaultBuilding->GetBoxComponent() && BoxComponent)
+			// BoxComponent도 메시와 동일 피벗/회전/크기로 맞춤
+			if (DAMesh && BoxComponent)
 			{
+				const FBox MeshLocalBox = DAMesh->GetBoundingBox();
+				const FVector MeshCenter = MeshLocalBox.GetCenter();
+				const FVector MeshPivotOffset(-MeshCenter.X, -MeshCenter.Y, -MeshLocalBox.Min.Z);
+				const float YawOffset = BData ? BData->BuildingYaw : 0.f;
+
+				BoxComponent->SetBoxExtent(MeshLocalBox.GetExtent());
+				BoxComponent->SetRelativeLocation(MeshPivotOffset);
+				BoxComponent->SetRelativeRotation(FRotator(0.f, YawOffset, 0.f));
+			}
+			else if (DefaultBuilding->GetBoxComponent() && BoxComponent)
+			{
+				// Fallback: CDO로부터 복사
 				FVector TargetExtent = DefaultBuilding->GetBoxComponent()->GetUnscaledBoxExtent();
 				BoxComponent->SetBoxExtent(TargetExtent);
 				BoxComponent->SetRelativeLocation(DefaultBuilding->GetBoxComponent()->GetRelativeLocation());
-			}
-
-			if (DefaultBuilding->GetSceneRootComponent())
-			{
-				USceneComponent* TargetSceneRoot = DefaultBuilding->GetSceneRootComponent();
-				SceneRootComponent->SetRelativeScale3D(TargetSceneRoot->GetRelativeScale3D());
 			}
 		}
 	}

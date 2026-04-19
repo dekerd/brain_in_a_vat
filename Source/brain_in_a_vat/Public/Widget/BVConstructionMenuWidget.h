@@ -9,6 +9,7 @@
 class UWrapBox;
 class UBVConstructionMenuSlotWidget;
 class UDataTable;
+class UBVBuildingCatalog;
 
 /**
  * 
@@ -27,6 +28,11 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "UI")
 	TSubclassOf<UBVConstructionMenuSlotWidget> SlotWidgetClass;
 
+	// 건설 가능한 건물 카탈로그 (DA). 여기에 설정된 건물들이 메뉴 슬롯으로 자동 생성됨.
+	UPROPERTY(EditDefaultsOnly, Category = "Data")
+	TObjectPtr<UBVBuildingCatalog> BuildingCatalog;
+
+	// Deprecated: 이전 방식의 직접 배열. 카탈로그가 없을 때 fallback으로만 사용.
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	TArray<TObjectPtr<class UBVBuildingData>> AvailableBuildingsData;
 };

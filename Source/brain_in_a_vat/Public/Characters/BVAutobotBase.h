@@ -28,7 +28,11 @@ public:
 	ABVAutobotBase();
 
 	virtual void OnConstruction(const FTransform& Transform) override;
-	
+
+	// 에디터에서 배치된 인스턴스의 메시 피벗을 캡슐 바닥으로 강제 보정.
+	UFUNCTION(CallInEditor, Category = "Construction")
+	void FixPivotToBottom();
+
 protected:
 	virtual void BeginPlay() override;
 

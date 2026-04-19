@@ -20,6 +20,9 @@ public:
 	void CenterOnActor(AActor* TargetActor);
 	void ZoomCamera(float ZoomValue);
 
+	// 특정 월드 위치로 순간 이동(팔로우 해제). Space+1 같은 "전투 현장 보기" 용도.
+	void JumpToLocation(const FVector& WorldLocation);
+
 protected:
 	virtual void BeginPlay() override;
 

@@ -45,6 +45,11 @@ public:
 protected:
 
 	virtual void OnConstruction(const FTransform& Transform) override;
+
+	// 에디터에서 배치된 인스턴스의 메시/박스 피벗을 바닥으로 강제 보정.
+	// Details 패널에서 "Fix Pivot To Bottom" 버튼으로 호출 가능.
+	UFUNCTION(CallInEditor, Category = "Construction")
+	void FixPivotToBottom();
 	
 	UPROPERTY(EditAnywhere, Category = "Collision")
 	float CapsuleRadius = 200.f;

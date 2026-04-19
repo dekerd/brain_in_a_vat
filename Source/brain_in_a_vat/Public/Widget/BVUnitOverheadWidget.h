@@ -16,12 +16,12 @@ class BRAIN_IN_A_VAT_API UBVUnitOverheadWidget : public UUserWidget
 
 public:
 	UPROPERTY(meta = (BindWidget))
-	class UTextBlock* UnitNameText;
-	
-	UPROPERTY(meta = (BindWidget))
 	class UProgressBar* HealthBar;
 
-	void SetUnitName(FText NewName);
+	// 체력바의 월드 두께(월드유닛). WBP에서 바로 수정 가능.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Overhead", meta = (ClampMin = "1.0"))
+	float WorldThickness = 12.f;
+
 	void InitWithHealthComponent(class UBVHealthComponent* InHealthComponent);
 
 protected:
