@@ -36,6 +36,11 @@ public:
 	// BeginPlay 시작 시 자동 호출되므로, BP에서 ProjectileData만 할당하면 끝.
 	void ApplyDataAsset();
 
+	// 스폰 시 런타임 주입용. SpawnActorDeferred 이후 FinishSpawning 전에 호출하면
+	// BeginPlay의 ApplyDataAsset이 자동으로 적용한다.
+	UFUNCTION(BlueprintCallable, Category = "Data")
+	void InitWithData(UBVProjectileData* InData) { ProjectileData = InData; }
+
 	// 투사체 설정 DA. BP 디폴트에서 할당하면 스폰 시 자동 적용됨.
 	UPROPERTY(EditDefaultsOnly, BlueprintReadOnly, Category = "Data")
 	TObjectPtr<UBVProjectileData> ProjectileData;

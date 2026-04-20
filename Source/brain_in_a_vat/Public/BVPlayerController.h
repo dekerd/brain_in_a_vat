@@ -315,6 +315,23 @@ protected:
 	// 현재 상세 패널이 표시 중인 건물 (약한 참조)
 	TWeakObjectPtr<ABVBuildingBase> DetailBuilding;
 
+// Unit Detail Widget
+public:
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> UnitDetailWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> UnitDetailWidget;
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowUnitDetail(class ABVAutobotBase* InUnit);
+
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void HideUnitDetail();
+
+protected:
+	TWeakObjectPtr<class ABVAutobotBase> DetailUnit;
+
 // NPC Interaction Widget
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")

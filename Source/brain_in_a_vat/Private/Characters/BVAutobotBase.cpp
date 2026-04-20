@@ -32,10 +32,6 @@
 // Sets default values
 ABVAutobotBase::ABVAutobotBase()
 {
-	// [Perf] Actor tick 간격 — Fade/RangedAttack용이라 30Hz면 충분 (매 프레임 대비 ~50% 감소)
-	PrimaryActorTick.bCanEverTick = true;
-	PrimaryActorTick.TickInterval = 0.0333f;
-
 	// AI
 	AIControllerClass = ABVAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
@@ -65,22 +61,8 @@ ABVAutobotBase::ABVAutobotBase()
 	GetCharacterMovement()->MinAnalogWalkSpeed = 20.f;
 	GetCharacterMovement()->BrakingDecelerationWalking = 2000.f;
 
-	// [Perf] RVO Avoidance는 O(N²) 비용 — 유닛 많으면 주범. 필요하면 짧은 반경만 체크.
-	GetCharacterMovement()->bUseRVOAvoidance = false;
-	GetCharacterMovement()->AvoidanceConsiderationRadius = 100.f;
-
-	// [Perf] CharacterMovement tick 최적화
-	GetCharacterMovement()->bRunPhysicsWithNoController = false;
-	GetCharacterMovement()->NavAgentProps.bCanCrouch = false;
-	GetCharacterMovement()->NavAgentProps.bCanFly = false;
-	GetCharacterMovement()->NavAgentProps.bCanSwim = false;
-
-	// [Perf] CharacterMovement 자체 tick 주기 제한 (20Hz) — 최저선.
-	// RTS 탑다운에선 이 정도로도 부드럽게 보임. 네이티브 이동 보간이 커버.
-	GetCharacterMovement()->PrimaryComponentTick.TickInterval = 0.05f;
-
-	// [Perf] Capsule overlap 이벤트 비활성화 (충돌은 유지)
-	GetCapsuleComponent()->SetGenerateOverlapEvents(false);
+	GetCharacterMovement()->bUseRVOAvoidance = true;
+	GetCharacterMovement()->AvoidanceConsiderationRadius = 200.f;
 
 	// HealthComponent
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
@@ -94,33 +76,6 @@ ABVAutobotBase::ABVAutobotBase()
 	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f));
 	OverheadWidgetComponent->SetRelativeScale3D(FVector(0.5f, 0.5f, 0.5f)); // 이 값을 조절하여 게임 내 위젯 크기를 맞추세요.
 	OverheadWidgetComponent->SetUsingAbsoluteRotation(true); // 유닛이 회전해도 위젯은 돌아가지 않도록 고정!
-	// [Perf] Automatic = 엔진이 자동 관리. TickWhenOffscreen=true로 첫 렌더 놓치는 유닛 없게.
-	OverheadWidgetComponent->SetTickMode(ETickMode::Automatic);
-	OverheadWidgetComponent->SetTickWhenOffscreen(true);
-	OverheadWidgetComponent->SetGenerateOverlapEvents(false);
-	OverheadWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
-
-	// [Perf] 스켈레탈 메시 애니메이션 업데이트 레이트 최적화 (URO)
-	// 카메라에서 멀거나 화면 밖 유닛은 애니메이션을 낮은 빈도로 갱신.
-	if (USkeletalMeshComponent* MeshComp = GetMesh())
-	{
-		MeshComp->bEnableUpdateRateOptimizations = true;
-		MeshComp->bDisplayDebugUpdateRateOptimizations = false;
-		// 보이지 않을 때 애니/본/몽타주 업데이트 스킵
-		MeshComp->VisibilityBasedAnimTickOption = EVisibilityBasedAnimTickOption::OnlyTickPoseWhenRendered;
-
-		// [Perf] 물리 시뮬레이션 안 쓰면 본 업데이트 skip
-		MeshComp->KinematicBonesUpdateType = EKinematicBonesUpdateToPhysics::SkipAllBones;
-
-		// [Perf] 스켈레탈 메시 overlap만 비활성화 (Hoverable 콜리전은 유지 - 선택/호버용)
-		MeshComp->SetGenerateOverlapEvents(false);
-
-		// [Perf] 그림자 비활성화
-		MeshComp->SetCastShadow(false);
-
-		// [Perf] 메시 tick 20Hz — URO가 가까운 유닛은 매 프레임 유지하므로 시각적 열화 미미.
-		MeshComp->PrimaryComponentTick.TickInterval = 0.05f;
-	}
 
 	// Gameplay Ability System (GAS)
 	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("ASC"));
@@ -353,7 +308,7 @@ AActor* ABVAutobotBase::GetBBAttackTarget() const
 void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 {
 	// 원거리 설정이 없는 유닛은 스킵 (기존 근접 플로우 유지)
-	if (!UnitData || !UnitData->ProjectileClass) return;
+	if (!UnitData || !UnitData->WeaponData) return;
 
 	UBVAnimInstance* AnimInst = Cast<UBVAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr);
 
@@ -378,12 +333,9 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 
 	// --- 사거리: DA의 ProjectileRange (투사체 최대 비행 거리) ---
 	float ProjectileRange = 0.f;
-	if (const ABVProjectileBase* CDO = UnitData->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
+	if (UnitData->WeaponData && UnitData->WeaponData->ProjectileRange > 0.f)
 	{
-		if (CDO->ProjectileData && CDO->ProjectileData->ProjectileRange > 0.f)
-		{
-			ProjectileRange = CDO->ProjectileData->ProjectileRange;
-		}
+		ProjectileRange = UnitData->WeaponData->ProjectileRange;
 	}
 
 	// 감지 범위 = 시야(VisionRadius). 발사 범위 = min(시야, 사거리).
@@ -544,7 +496,13 @@ bool ABVAutobotBase::IsDestroyed_Implementation() const
 
 void ABVAutobotBase::ApplyInitStatFromDataAsset()
 {
-	if (!ASC || !InitStatsEffect || !UnitData) return;
+	if (!ASC || !UnitData || !CombatAttributes)
+	{
+		UE_LOG(LogTemp, Error,
+			TEXT("[InitStat] %s SKIPPED  ASC=%d UnitData=%d CombatAttributes=%d"),
+			*GetName(), ASC != nullptr, UnitData != nullptr, CombatAttributes != nullptr);
+		return;
+	}
 
 	if (UnitData->OverheadWidgetClass)
 	{
@@ -575,24 +533,28 @@ void ABVAutobotBase::ApplyInitStatFromDataAsset()
 		MoveComp->MaxWalkSpeed = UnitData->MovementSpeed;
 	}
 
-	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
-	GEContext.AddInstigator(this, this);
+	// --- 초기 Attribute 세팅: GE SetByCaller 체인 대신 직접 Base Value 세팅 ---
+	// MaxHealth를 먼저 세팅해야 Health Clamp가 올바르게 동작함.
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMaxHealthAttribute(),   UnitData->MaxHealth);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMaxManaAttribute(),     UnitData->MaxMana);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetHealthAttribute(),      UnitData->MaxHealth);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetManaAttribute(),        UnitData->MaxMana);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetHealthRegenAttribute(), UnitData->HealthRegen);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetManaRegenAttribute(),   UnitData->ManaRegen);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetDamageAttribute(),      UnitData->Damage);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetDefenseAttribute(),     UnitData->Defense);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAttackSpeedAttribute(), UnitData->AttackSpeed);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAttackRangeAttribute(), UnitData->AttackRange);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMovementSpeedAttribute(), UnitData->MovementSpeed);
 
-	FGameplayEffectSpecHandle SpecHandle = ASC->MakeOutgoingSpec(InitStatsEffect, 1.0f, GEContext);
-	if (SpecHandle.IsValid())
-	{
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.MaxHealth")), UnitData->MaxHealth);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.HealthRegen")), UnitData->HealthRegen);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.MaxMana")), UnitData->MaxMana);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.ManaRegen")), UnitData->ManaRegen);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Damage")), UnitData->Damage);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.Defence")), UnitData->Defence);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.AttackSpeed")), UnitData->AttackSpeed);
-		SpecHandle.Data.Get()->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(FName("Data.AttackRange")), UnitData->AttackRange);
-		
-		ASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
-	}
-	
+	UE_LOG(LogTemp, Warning,
+		TEXT("[InitStat] %s: MaxHP=%.1f HP=%.1f Dmg=%.1f Def=%.1f AS=%.2f"),
+		*GetName(),
+		CombatAttributes->GetMaxHealth(),
+		CombatAttributes->GetHealth(),
+		CombatAttributes->GetDamage(),
+		CombatAttributes->GetDefense(),
+		CombatAttributes->GetAttackSpeed());
 }
 
 void ABVAutobotBase::Attack()
@@ -647,10 +609,13 @@ void ABVAutobotBase::Dead()
 		AIController->StopMovement();
 	}
 
-	// Hide Widget
+	// Hide Widget — 쓰러지는 즉시 제거
 	if (OverheadWidgetComponent)
 	{
-		OverheadWidgetComponent->SetVisibility(false);
+		OverheadWidgetComponent->SetVisibility(false, true);
+		OverheadWidgetComponent->SetHiddenInGame(true, true);
+		OverheadWidgetComponent->DestroyComponent();
+		OverheadWidgetComponent = nullptr;
 	}
 	
 	// Destroy this object 
@@ -713,7 +678,7 @@ void ABVAutobotBase::PerformAttackHit()
 	}
 
 	// 원거리 유닛은 애님 노티파이로 때리지 않는다. Tick 쿨다운이 FireProjectile을 호출한다.
-	if (UnitData && UnitData->ProjectileClass)
+	if (UnitData && UnitData->WeaponData)
 	{
 		return;
 	}
@@ -724,7 +689,7 @@ void ABVAutobotBase::PerformAttackHit()
 
 void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 {
-	if (!TargetActor || !UnitData || !UnitData->ProjectileClass) return;
+	if (!TargetActor || !UnitData || !UnitData->WeaponData) return;
 
 	UWorld* World = GetWorld();
 	if (!World) return;
@@ -758,35 +723,11 @@ void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 		TargetLocation.Z += TargetChar->GetDefaultHalfHeight() * 0.5f;
 	}
 
-	// --- 투사체 CDO에서 DA 읽기 (궤적/속도 판단용) ---
-	EBVProjectileTrajectory Trajectory = EBVProjectileTrajectory::Straight;
-	float ProjectileSpeed = 2500.f;
-	float ArcValue = 0.5f;
-
-	if (const ABVProjectileBase* CDO = UnitData->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
-	{
-		if (const UBVProjectileData* PData = CDO->ProjectileData)
-		{
-			Trajectory = PData->TrajectoryType;
-			if (PData->ProjectileSpeed > 0.f)
-			{
-				ProjectileSpeed = PData->ProjectileSpeed;
-			}
-			ArcValue = PData->ArcValue;
-		}
-		else
-		{
-			// DA 없으면 CDO의 ProjectileMovement에서 InitialSpeed 폴백
-			if (const UProjectileMovementComponent* CDOMovement =
-				CDO->FindComponentByClass<UProjectileMovementComponent>())
-			{
-				if (CDOMovement->InitialSpeed > 0.f)
-				{
-					ProjectileSpeed = CDOMovement->InitialSpeed;
-				}
-			}
-		}
-	}
+	// --- DA에서 궤적/속도 읽기 ---
+	const UBVProjectileData* PData = UnitData->WeaponData;
+	EBVProjectileTrajectory Trajectory = PData->TrajectoryType;
+	float ProjectileSpeed = PData->ProjectileSpeed > 0.f ? PData->ProjectileSpeed : 2500.f;
+	float ArcValue = PData->ArcValue;
 
 	// --- Launch 속도 계산 ---
 	FVector LaunchVelocity = FVector::ZeroVector;
@@ -813,19 +754,19 @@ void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 		LaunchVelocity = Direction * ProjectileSpeed;
 	}
 
-	// --- 스폰 (일반 SpawnActor — BeginPlay에서 DA가 자동 적용됨) ---
-	FActorSpawnParameters Params;
-	Params.Owner = this;
-	Params.Instigator = this;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
-		UnitData->ProjectileClass,
-		SpawnLocation,
-		LaunchVelocity.Rotation(),
-		Params);
+	// --- 스폰 (Deferred: DA 주입 후 FinishSpawning에서 BeginPlay가 DA 자동 적용) ---
+	const FTransform SpawnXform(LaunchVelocity.Rotation(), SpawnLocation);
+	ABVProjectileBase* Projectile = World->SpawnActorDeferred<ABVProjectileBase>(
+		ABVProjectileBase::StaticClass(),
+		SpawnXform,
+		this,
+		this,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
 	if (!Projectile) return;
+
+	Projectile->InitWithData(UnitData->WeaponData);
+	UGameplayStatics::FinishSpawningActor(Projectile, SpawnXform);
 
 	// 유닛의 현재 Damage 스탯으로 투사체 데미지 덮어쓰기
 	if (CombatAttributes)

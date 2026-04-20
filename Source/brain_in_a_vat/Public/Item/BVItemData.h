@@ -42,16 +42,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Item")
 	EItemType ItemType;
 	
+	// 무기용 투사체 DA. 스폰 시 BVProjectileBase 기본 클래스에 이 데이터를 주입해 구성한다.
+	// 사거리/데미지/발사간격 등 무기 스펙은 모두 이 DA 안에서 설정.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Weapon")
-	TSubclassOf<class ABVProjectileBase> ProjectileClass;
+	TObjectPtr<class UBVProjectileData> WeaponData;
 
-	UPROPERTY(EditAnywhere, Category = "Weapon")
-	float FireInterval = 1.0f;
-
-	UPROPERTY(EditAnywhere, Category = "Weapon")
-	float DamageAmount = 20.f;
-
-	UPROPERTY(EditAnywhere, Category = "Weapon")
-	float FireRange = 100.f;
-	
 };

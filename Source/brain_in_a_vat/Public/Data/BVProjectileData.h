@@ -26,12 +26,29 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	FName ProjectileName;
 
+	// 무기(투사체) 표시용 이름 — 유닛 상세 패널 등에 사용
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
+	FText WeaponName;
+
+	// 무기(투사체) 아이콘 — 유닛 상세 패널 등에 사용
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
+	TObjectPtr<UTexture2D> WeaponIcon;
+
 	// --- Visual ---
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<UStaticMesh> ProjectileMesh;
 
+	// 메시 균일 스케일 (전체 축에 동일 적용).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual", meta = (ClampMin = "0.01"))
 	float MeshScale = 1.f;
+
+	// 메시 로컬 회전 오프셋. 모델 축이 +X 전방이 아닐 때 이걸로 보정.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
+	FRotator MeshRotation = FRotator::ZeroRotator;
+
+	// 메시 로컬 위치 오프셋. 콜리전 중심과 메시 피벗이 맞지 않을 때 보정.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
+	FVector MeshLocationOffset = FVector::ZeroVector;
 
 	// 투사체 뒤에 꼬리로 붙는 나이아가라 (선택)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
@@ -40,6 +57,10 @@ public:
 	// 충돌 시 재생되는 Niagara 이펙트 (우선). 할당되어 있으면 Cascade는 무시됨.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<class UNiagaraSystem> HitNiagaraEffect;
+
+	// HitNiagaraEffect 재생 속도 배수 (1.0 = 원본, 2.0 = 2배속, 0.5 = 절반속도).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual", meta = (ClampMin = "0.01"))
+	float HitNiagaraPlayRate = 1.f;
 
 	// 충돌 시 재생되는 Cascade 파티클 (Niagara가 없을 때 폴백)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
@@ -85,4 +106,8 @@ public:
 	// 0 이하면 제한 없음.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gameplay")
 	float ProjectileRange = 0.f;
+
+	// 발사 간격(초). 플레이어 무기 쿨타임 계산에 사용.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Gameplay", meta = (ClampMin = "0.01"))
+	float FireInterval = 1.f;
 };

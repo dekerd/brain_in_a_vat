@@ -34,7 +34,7 @@ EBTNodeResult::Type UBTTask_AttackTargetEnemy::ExecuteTask(UBehaviorTreeComponen
 	// 원거리 유닛: 멜리 몽타주(Attack)를 재생하지 않는다.
 	// 발사는 ABVAutobotBase::TickRangedAttack가 쿨다운에 맞춰 자동으로 처리한다.
 	// 또한 BT가 곧장 MoveTo로 다시 접근하지 않도록 즉시 정지시키고, Succeed로 빠져나간다.
-	if (Autobot->UnitData && Autobot->UnitData->ProjectileClass)
+	if (Autobot->UnitData && Autobot->UnitData->WeaponData)
 	{
 		AIController->StopMovement();
 		return EBTNodeResult::Succeeded;

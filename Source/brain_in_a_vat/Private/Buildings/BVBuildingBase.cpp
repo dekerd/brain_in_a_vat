@@ -80,11 +80,6 @@ ABVBuildingBase::ABVBuildingBase()
 	OverheadWidgetComponent->SetDrawSize(FVector2D(120.f, 12.f));
 	OverheadWidgetComponent->SetRelativeScale3D(FVector(1.f));
 	OverheadWidgetComponent->SetUsingAbsoluteRotation(true);
-	// [Perf] Automatic = 엔진이 자동 관리. 화면 밖에서도 tick 유지해 안정적으로 표시.
-	OverheadWidgetComponent->SetTickMode(ETickMode::Automatic);
-	OverheadWidgetComponent->SetTickWhenOffscreen(true);
-	OverheadWidgetComponent->SetGenerateOverlapEvents(false);
-	OverheadWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 }
 
 void ABVBuildingBase::Tick(float DeltaTime)

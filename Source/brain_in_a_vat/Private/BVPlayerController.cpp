@@ -27,6 +27,7 @@
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetRenderingLibrary.h"
 #include "Widget/BVBuildingDetailWidget.h"
+#include "Widget/BVUnitDetailWidget.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
 #include "Widget/BVShopWidget.h"
@@ -231,6 +232,42 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 		}
 	}
 
+	// 유닛 상세 패널이 열려 있을 때: 라이브 스탯 갱신 + 유닛 옆에 붙여 따라가기
+	if (UnitDetailWidget && UnitDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		if (ABVAutobotBase* DetailU = DetailUnit.Get())
+		{
+			if (DetailU->bIsDead)
+			{
+				HideUnitDetail();
+			}
+			else
+			{
+				if (UBVUnitDetailWidget* DetailW = Cast<UBVUnitDetailWidget>(UnitDetailWidget))
+				{
+					DetailW->RefreshLiveStats();
+				}
+
+				FVector2D WidgetPos;
+				if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+						this, DetailU->GetActorLocation(), WidgetPos, false))
+				{
+					const FVector2D PanelOffset(60.f, -30.f);
+					UnitDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+					UnitDetailWidget->SetVisibility(ESlateVisibility::Visible);
+				}
+				else
+				{
+					UnitDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+				}
+			}
+		}
+		else
+		{
+			HideUnitDetail();
+		}
+	}
+
 	// Fog of war 는 BeginPlay에서 SetTimer(0.15s)로 주기 실행. 매 프레임 호출 안 함.
 }
 
@@ -350,8 +387,9 @@ void ABVPlayerController::ToggleOverheadWidgets()
 
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 {
-	// 우클릭 = 건물 선택 해제
+	// 우클릭 = 선택 해제 (건물/유닛 패널 닫기)
 	HideBuildingDetail();
+	HideUnitDetail();
 
 	if (bIsMovingToBuild || bIsConstructionMode)
 	{
@@ -419,6 +457,7 @@ void ABVPlayerController::SelectObject()
 			// 건물 클릭 시 상세 패널 토글 (같은 건물이면 닫기, 다른 건물이면 전환)
 			if (ABVBuildingBase* ClickedBuilding = Cast<ABVBuildingBase>(SelectedActor))
 			{
+				HideUnitDetail();
 				if (DetailBuilding.Get() == ClickedBuilding)
 				{
 					HideBuildingDetail();
@@ -428,15 +467,30 @@ void ABVPlayerController::SelectObject()
 					ShowBuildingDetail(ClickedBuilding);
 				}
 			}
+			// 유닛 클릭 시 상세 패널 토글
+			else if (ABVAutobotBase* ClickedUnit = Cast<ABVAutobotBase>(SelectedActor))
+			{
+				HideBuildingDetail();
+				if (DetailUnit.Get() == ClickedUnit)
+				{
+					HideUnitDetail();
+				}
+				else
+				{
+					ShowUnitDetail(ClickedUnit);
+				}
+			}
 			else
 			{
 				HideBuildingDetail();
+				HideUnitDetail();
 			}
 		}
 		else
 		{
 			// 빈 공간 클릭 -> 상세 패널 닫기
 			HideBuildingDetail();
+			HideUnitDetail();
 		}
 	}
 }
@@ -629,6 +683,70 @@ void ABVPlayerController::HideBuildingDetail()
 	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void ABVPlayerController::ShowUnitDetail(ABVAutobotBase* InUnit)
+{
+	if (!InUnit) return;
+
+	// 최초 1회만 위젯 생성
+	if (!UnitDetailWidget && UnitDetailWidgetClass)
+	{
+		UnitDetailWidget = CreateWidget<UUserWidget>(this, UnitDetailWidgetClass);
+		if (UnitDetailWidget)
+		{
+			UnitDetailWidget->AddToViewport();
+			UnitDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
+
+	if (!UnitDetailWidget) return;
+
+	DetailUnit = InUnit;
+
+	// 선택된 유닛에 호버 이펙트 강제 ON
+	if (InUnit->Implements<UBVDamageableInterface>())
+	{
+		IBVDamageableInterface::Execute_SetHovered(InUnit, true);
+	}
+
+	if (UBVUnitDetailWidget* DetailW = Cast<UBVUnitDetailWidget>(UnitDetailWidget))
+	{
+		DetailW->SetFromUnit(InUnit);
+	}
+
+	UnitDetailWidget->SetVisibility(ESlateVisibility::Visible);
+
+	// 초기 위치 잡기
+	FVector2D WidgetPos;
+	if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+			this, InUnit->GetActorLocation(), WidgetPos, false))
+	{
+		const FVector2D PanelOffset(60.f, -30.f);
+		UnitDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+	}
+}
+
+void ABVPlayerController::HideUnitDetail()
+{
+	if (ABVAutobotBase* Previous = DetailUnit.Get())
+	{
+		if (Previous != HoveredObject && Previous->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(Previous, false);
+		}
+	}
+
+	DetailUnit = nullptr;
+
+	if (UnitDetailWidget && UnitDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		if (UBVUnitDetailWidget* DetailW = Cast<UBVUnitDetailWidget>(UnitDetailWidget))
+		{
+			DetailW->SetFromUnit(nullptr);
+		}
+		UnitDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 }
 

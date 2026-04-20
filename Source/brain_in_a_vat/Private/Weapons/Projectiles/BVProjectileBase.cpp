@@ -73,6 +73,8 @@ void ABVProjectileBase::OnConstruction(const FTransform& Transform)
 		{
 			StaticMeshComponent->SetStaticMesh(ProjectileData->ProjectileMesh);
 			StaticMeshComponent->SetRelativeScale3D(FVector(ProjectileData->MeshScale));
+			StaticMeshComponent->SetRelativeRotation(ProjectileData->MeshRotation);
+			StaticMeshComponent->SetRelativeLocation(ProjectileData->MeshLocationOffset);
 		}
 		if (CollisionComponent && ProjectileData->CollisionRadius > 0.f)
 		{
@@ -123,8 +125,15 @@ void ABVProjectileBase::SpawnHitVFX(AActor* HitActor)
 
 	if (HitNiagaraEffect)
 	{
-		UNiagaraFunctionLibrary::SpawnSystemAtLocation(
+		UNiagaraComponent* NC = UNiagaraFunctionLibrary::SpawnSystemAtLocation(
 			GetWorld(), HitNiagaraEffect, SpawnLoc, SpawnRot);
+
+		// DA의 재생속도 배수 적용 (CustomTimeDilation으로 시뮬레이션 속도 스케일)
+		if (NC && ProjectileData && ProjectileData->HitNiagaraPlayRate > 0.f
+			&& !FMath::IsNearlyEqual(ProjectileData->HitNiagaraPlayRate, 1.f))
+		{
+			NC->SetCustomTimeDilation(ProjectileData->HitNiagaraPlayRate);
+		}
 	}
 	else if (HitEffect)
 	{
@@ -153,6 +162,8 @@ void ABVProjectileBase::ApplyDataAsset()
 	{
 		StaticMeshComponent->SetStaticMesh(PData->ProjectileMesh);
 		StaticMeshComponent->SetRelativeScale3D(FVector(PData->MeshScale));
+		StaticMeshComponent->SetRelativeRotation(PData->MeshRotation);
+		StaticMeshComponent->SetRelativeLocation(PData->MeshLocationOffset);
 	}
 
 	// --- Trail VFX (Niagara) ---

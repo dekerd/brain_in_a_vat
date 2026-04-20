@@ -18,7 +18,7 @@ struct FUnitStats : public FTableRowBase
 	float Damage = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
-	float Defence = 1.0f;
+	float Defense = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly)
 	float AttackSpeed = 1.f;

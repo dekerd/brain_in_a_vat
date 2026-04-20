@@ -68,16 +68,10 @@ void UBTService_UpdateClosestEnemy::TickNode(UBehaviorTreeComponent& OwnerComp, 
 		// 원거리 유닛: DA의 ProjectileRange 기준으로 사정거리 유지하도록 덮어쓰기
 		if (ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(Pawn))
 		{
-			if (Autobot->UnitData && Autobot->UnitData->ProjectileClass)
+			if (Autobot->UnitData && Autobot->UnitData->WeaponData)
 			{
-				float ProjRange = 0.f;
-				if (const ABVProjectileBase* CDO = Autobot->UnitData->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
-				{
-					if (CDO->ProjectileData && CDO->ProjectileData->ProjectileRange > 0.f)
-					{
-						ProjRange = CDO->ProjectileData->ProjectileRange;
-					}
-				}
+				float ProjRange = (Autobot->UnitData->WeaponData->ProjectileRange > 0.f)
+					? Autobot->UnitData->WeaponData->ProjectileRange : 0.f;
 
 				if (ProjRange > 0.f)
 				{

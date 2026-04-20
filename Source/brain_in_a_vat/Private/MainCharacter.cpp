@@ -241,28 +241,46 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 {
 
 	UBVItemData* Weapon = EquippedWeapons[WeaponIndex];
-	
+	if (!Weapon || !Weapon->WeaponData)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[FireWeapons] idx=%d: Weapon or WeaponData is NULL, skipping."),
+			WeaponIndex);
+		return;
+	}
+
+	const UBVProjectileData* PData = Weapon->WeaponData;
+
 	WeaponCoolTime[WeaponIndex] += DeltaSecond;
-	if (WeaponCoolTime[WeaponIndex] < Weapon->FireInterval) return;
+	if (WeaponCoolTime[WeaponIndex] < PData->FireInterval) return;
 	if (GlobalFireTimer < MinFireInterval) return;
 
 	AActor* Target = FindNearestEnemyInRange();
+	UE_LOG(LogTemp, Warning,
+		TEXT("[FireWeapons] idx=%d Cool=%.2f/%.2f Global=%.2f/%.2f EnemiesInRange=%d Target=%s"),
+		WeaponIndex, WeaponCoolTime[WeaponIndex], PData->FireInterval,
+		GlobalFireTimer, MinFireInterval, EnemiesInRange.Num(),
+		Target ? *Target->GetName() : TEXT("NULL"));
+
 	if (Target)
 	{
-		// 투사체 DA의 ProjectileRange 안에 있을 때만 발사
-		if (Weapon->ProjectileClass)
+		// 사거리 게이트: WeaponData->ProjectileRange만 사용 (0 이하면 발사 금지).
+		const float EffectiveRange = PData->ProjectileRange;
+		if (EffectiveRange <= 0.f)
 		{
-			if (const ABVProjectileBase* CDO = Weapon->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
-			{
-				if (CDO->ProjectileData && CDO->ProjectileData->ProjectileRange > 0.f)
-				{
-					const float Dist = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
-					if (Dist > CDO->ProjectileData->ProjectileRange)
-					{
-						return; // 시야 안에는 있지만 사거리 밖
-					}
-				}
-			}
+			UE_LOG(LogTemp, Warning,
+				TEXT("[FireWeapons] %s: ProjectileRange<=0 on %s"),
+				*Weapon->GetName(), *PData->GetName());
+			return;
+		}
+
+		const float Dist = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
+		if (Dist > EffectiveRange)
+		{
+			UE_LOG(LogTemp, Verbose,
+				TEXT("[FireWeapons] OUT OF RANGE idx=%d Dist=%.1f > Eff=%.1f"),
+				WeaponIndex, Dist, EffectiveRange);
+			return;
 		}
 
 		FireDefaultMissile(Weapon, Target);
@@ -274,10 +292,7 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 
 void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 {
-	FString DebugMsg = FString::Printf(TEXT("Fire %s to %s"), *ItemData->ItemName.ToString(), *Target->GetName());
-	GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Blue, DebugMsg);
-
-	if (!ItemData || !Target || !ItemData->ProjectileClass) return;
+	if (!ItemData || !Target || !ItemData->WeaponData) return;
 
 	UWorld* World = GetWorld();
 	if (!World) return;
@@ -291,23 +306,11 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 		TargetLocation.Z += TargetChar->GetDefaultHalfHeight() * 0.5f;
 	}
 
-	// --- 투사체 CDO의 DA에서 궤적/속도 읽기 ---
-	EBVProjectileTrajectory Trajectory = EBVProjectileTrajectory::Arc; // 기존 기본값 유지
-	float ProjectileSpeed = 2500.f;
-	float ArcValue = 0.5f;
-
-	if (const ABVProjectileBase* CDO = ItemData->ProjectileClass->GetDefaultObject<ABVProjectileBase>())
-	{
-		if (const UBVProjectileData* PData = CDO->ProjectileData)
-		{
-			Trajectory = PData->TrajectoryType;
-			if (PData->ProjectileSpeed > 0.f)
-			{
-				ProjectileSpeed = PData->ProjectileSpeed;
-			}
-			ArcValue = PData->ArcValue;
-		}
-	}
+	// --- DA에서 궤적/속도 읽기 ---
+	const UBVProjectileData* PData = ItemData->WeaponData;
+	EBVProjectileTrajectory Trajectory = PData->TrajectoryType;
+	float ProjectileSpeed = PData->ProjectileSpeed > 0.f ? PData->ProjectileSpeed : 2500.f;
+	float ArcValue = PData->ArcValue;
 
 	// --- Launch 속도 계산 ---
 	FVector LaunchVelocity = FVector::ZeroVector;
@@ -335,19 +338,19 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 		LaunchVelocity = Direction * ProjectileSpeed;
 	}
 
-	// --- 스폰 ---
-	FActorSpawnParameters Params;
-	Params.Owner = this;
-	Params.Instigator = this;
-	Params.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AlwaysSpawn;
-
-	ABVProjectileBase* Projectile = World->SpawnActor<ABVProjectileBase>(
-		ItemData->ProjectileClass,
-		SpawnLocation,
-		LaunchVelocity.Rotation(),
-		Params);
+	// --- 스폰 (Deferred: DA 주입 후 FinishSpawning) ---
+	const FTransform SpawnXform(LaunchVelocity.Rotation(), SpawnLocation);
+	ABVProjectileBase* Projectile = World->SpawnActorDeferred<ABVProjectileBase>(
+		ABVProjectileBase::StaticClass(),
+		SpawnXform,
+		this,
+		this,
+		ESpawnActorCollisionHandlingMethod::AlwaysSpawn);
 
 	if (!Projectile) return;
+
+	Projectile->InitWithData(ItemData->WeaponData);
+	UGameplayStatics::FinishSpawningActor(Projectile, SpawnXform);
 
 	// 중력: 직선이면 제거, 포물선이면 유지
 	if (UProjectileMovementComponent* Movement =

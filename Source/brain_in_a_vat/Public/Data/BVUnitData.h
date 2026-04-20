@@ -5,7 +5,7 @@
 #include "Headers/BVTeam.h"
 #include "BVUnitData.generated.h"
 
-class ABVProjectileBase;
+class UBVProjectileData;
 
 UCLASS(BlueprintType)
 class BRAIN_IN_A_VAT_API UBVUnitData : public UPrimaryDataAsset
@@ -19,6 +19,10 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	TObjectPtr<UTexture2D> UnitIcon;
+
+	// 무기 데이터 (투사체 DA). WeaponName / WeaponIcon은 여기서 읽어온다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
+	TObjectPtr<UBVProjectileData> WeaponData;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	EBVTeam TeamType = EBVTeam::Neutral;
@@ -45,7 +49,7 @@ public:
 	float Damage = 10.f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
-	float Defence = 1.0f;
+	float Defense = 1.0f;
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
 	float MaxMana = 50.f;
@@ -62,11 +66,8 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Spec")
 	float AttackRange = 20.f;
 
-	// 원거리 공격용 투사체 클래스. 비어 있으면 유닛은 근접 공격을 한다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ranged")
-	TSubclassOf<ABVProjectileBase> ProjectileClass;
-
 	// 투사체가 스폰될 스켈레탈 메시 소켓 이름. None이면 액터 위치 + 전방 오프셋에서 스폰.
+	// (원거리 여부는 WeaponData가 유효한지로 판정한다)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Ranged")
 	FName MuzzleSocketName = NAME_None;
 

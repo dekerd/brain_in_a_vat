@@ -75,7 +75,7 @@ public:
 	float GetDamage() const { return CombatAttributes ? CombatAttributes->GetDamage() : 0.0f; }
 
 	UFUNCTION(BlueprintPure, Category = "GAS|Attributes")
-	float GetDefence() const { return CombatAttributes ? CombatAttributes->GetDefense() : 0.0f; }
+	float GetDefense() const { return CombatAttributes ? CombatAttributes->GetDefense() : 0.0f; }
 
 	UFUNCTION(BlueprintPure, Category = "GAS|Attributes")
 	float GetAttackSpeed() const { return CombatAttributes ? CombatAttributes->GetAttackSpeed() : 0.0f; }
@@ -118,7 +118,7 @@ public:
 	void PerformAttackHit();
 	void ApplyDamageToTarget(AActor* TargetActor);
 
-	// 원거리 공격: UnitData->ProjectileClass가 있으면 여기서 스폰. Target을 향해 포물선 발사.
+	// 원거리 공격: UnitData->WeaponData가 있으면 여기서 스폰. Target을 향해 포물선 발사.
 	void FireProjectile(AActor* TargetActor);
 
 protected:
