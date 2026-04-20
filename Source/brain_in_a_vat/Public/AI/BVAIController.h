@@ -15,7 +15,7 @@ class BRAIN_IN_A_VAT_API ABVAIController : public AAIController
 
 public:
 	// Sets default values for this actor's properties
-	ABVAIController();
+	ABVAIController(const FObjectInitializer& ObjectInitializer);
 
 	void RunAI();
 	void StopAI();
@@ -59,6 +59,11 @@ private:
 	float LaneJoinOffset = 0.f;
 
 	FTimerHandle LaneCheckTimerHandle;
+
+	// Stuck detection for lane-joining (can't reach Foot straight-line through obstacles)
+	FVector LastPawnLocation = FVector::ZeroVector;
+	float StuckAccumTime = 0.f;
+	int32 DetourSign = 1;
 
 	// 주기적으로 레인 합류 여부를 확인하고, 합류 시 목적지를 적 베이스로 전환
 	UFUNCTION()

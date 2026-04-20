@@ -4,17 +4,27 @@
 
 #include "CoreMinimal.h"
 #include "GenericTeamAgentInterface.h"
+#include "AbilitySystemInterface.h"
 #include "GameFramework/Character.h"
 #include "Headers/BVTeam.h"
+#include "Interface/BVDamageableInterface.h"
 #include "MainCharacter.generated.h"
 
 class ABVBuildingBase;
 class UBVItemData;
+class UBVPlayerData;
+class UAbilitySystemComponent;
+class UCombatAttributeSet;
+class UBVHealthComponent;
+class UAIPerceptionStimuliSourceComponent;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE(FOnInventoryUpdated);
 
 UCLASS()
-class BRAIN_IN_A_VAT_API AMainCharacter : public ACharacter, public IGenericTeamAgentInterface
+class BRAIN_IN_A_VAT_API AMainCharacter : public ACharacter,
+                                          public IGenericTeamAgentInterface,
+                                          public IAbilitySystemInterface,
+                                          public IBVDamageableInterface
 {
 	GENERATED_BODY()
 
@@ -35,9 +45,51 @@ protected:
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Team")
 	EBVTeam TeamType = EBVTeam::Player;
-	
+
 	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
 	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamType = (EBVTeam)NewTeamID.GetId(); }
+
+// Damageable Interface (hover는 no-op)
+public:
+	virtual FGenericTeamId GetTeamId_Implementation() const override { return GetGenericTeamId(); }
+	virtual bool IsDestroyed_Implementation() const override { return bIsDead; }
+	virtual void SetHovered_Implementation(bool bInHovered) override {}
+
+// GAS / Stats
+public:
+	virtual UAbilitySystemComponent* GetAbilitySystemComponent() const override;
+
+	UFUNCTION(BlueprintPure, Category = "GAS")
+	UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
+
+	UFUNCTION(BlueprintPure, Category = "GAS")
+	UBVHealthComponent* GetHealthComponent() const { return HealthComponent; }
+
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stats")
+	TObjectPtr<UBVPlayerData> PlayerData;
+
+	void ApplyInitStatFromDataAsset();
+
+	void HandleDeath();
+
+	UPROPERTY(BlueprintReadOnly, Category = "State")
+	bool bIsDead = false;
+
+protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "GAS")
+	TObjectPtr<UAbilitySystemComponent> ASC;
+
+	UPROPERTY()
+	TObjectPtr<UCombatAttributeSet> CombatAttributes;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UBVHealthComponent> HealthComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
+	TObjectPtr<UAIPerceptionStimuliSourceComponent> StimuliSourceComponent;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
+	TObjectPtr<class UWidgetComponent> OverheadWidgetComponent;
 	
 // Inventory and Weapons
 	

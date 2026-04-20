@@ -118,8 +118,23 @@ public:
 	void PerformAttackHit();
 	void ApplyDamageToTarget(AActor* TargetActor);
 
-	// 원거리 공격: UnitData->WeaponData가 있으면 여기서 스폰. Target을 향해 포물선 발사.
+	// 원거리 공격 시작: 몽타주만 재생하고, 실제 스폰은 PerformAttackHit 노티파이에서 수행.
 	void FireProjectile(AActor* TargetActor);
+
+	// 실제 투사체 스폰 로직. PerformAttackHit 노티파이 시점에 호출됨.
+	void SpawnProjectileAtTarget(AActor* TargetActor);
+
+protected:
+	// FireProjectile 호출 시점에 기억해뒀다가, 노티파이 타이밍에 실제로 스폰할 타겟.
+	TWeakObjectPtr<AActor> PendingFireTarget;
+
+	// 몽타주에 PerformAttackHit 노티파이가 없을 때를 대비한 안전 타이머.
+	// FireProjectile 호출 후 이 시간 안에 노티파이가 안 오면 자동으로 스폰한다.
+	FTimerHandle FireFallbackTimerHandle;
+
+	void FireFallbackSpawn();
+
+public:
 
 protected:
 	// Tick에서 누적되는 쿨다운 타이머 (원거리 자동 발사용).

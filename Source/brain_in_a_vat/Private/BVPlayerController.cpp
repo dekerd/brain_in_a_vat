@@ -117,6 +117,29 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
+	// --- Box selection drag tracking ---
+	if (bIsDragSelecting)
+	{
+		float MX = 0.f, MY = 0.f;
+		if (GetMousePosition(MX, MY))
+		{
+			DragCurrentScreenPos = FVector2D(MX, MY);
+
+			if (!bDragMovedBeyondThreshold)
+			{
+				if (FVector2D::Distance(DragCurrentScreenPos, DragStartScreenPos) > DragThresholdPixels)
+				{
+					bDragMovedBeyondThreshold = true;
+				}
+			}
+
+			if (bDragMovedBeyondThreshold)
+			{
+				UpdateBoxHover();
+			}
+		}
+	}
+
 	// Construction Ghost
 	if (bIsConstructionMode)
 	{
@@ -162,8 +185,17 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 	if (NewHitActor != HoveredObject)
 	{
-		// 커서가 벗어나도, '선택된 건물'은 호버 이펙트 유지
-		if (HoveredObject && HoveredObject != DetailBuilding.Get())
+		// 커서가 벗어나도, '선택된 건물' 또는 '박스셀렉션에 포함된 액터'는 호버 유지
+		auto IsBoxSelected = [this](AActor* A)
+		{
+			for (const TWeakObjectPtr<AActor>& W : BoxSelectedActors)
+			{
+				if (W.Get() == A) return true;
+			}
+			return false;
+		};
+
+		if (HoveredObject && HoveredObject != DetailBuilding.Get() && !IsBoxSelected(HoveredObject))
 		{
 			if (HoveredObject->Implements<UBVDamageableInterface>())
 			{
@@ -325,8 +357,10 @@ void ABVPlayerController::SetupInputComponent()
 
 			if (SelectAction)
 			{
-				// Left Click -> Select
-				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::SelectObject);
+				// Left Click Pressed -> 드래그 시작 기록 (단일선택은 Released에서 판정)
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::OnSelectPressed);
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Completed, this, &ABVPlayerController::OnSelectReleased);
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Canceled, this, &ABVPlayerController::OnSelectReleased);
 			}
 
 			// [Build Mode]
@@ -1231,11 +1265,177 @@ void ABVPlayerController::CloseShopUI()
 {
 	if (ShopWidget && ShopWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
-		ShopWidget->SetVisibility(ESlateVisibility::Hidden); 
-		
+		ShopWidget->SetVisibility(ESlateVisibility::Hidden);
+
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		SetInputMode(InputMode);
 	}
+}
+
+// ======================= Box Selection =======================
+
+void ABVPlayerController::OnSelectPressed()
+{
+	// 기존 박스 셀렉션 먼저 해제
+	ClearBoxSelection();
+
+	bIsDragSelecting = true;
+	bDragMovedBeyondThreshold = false;
+
+	float MX = 0.f, MY = 0.f;
+	if (GetMousePosition(MX, MY))
+	{
+		DragStartScreenPos = FVector2D(MX, MY);
+		DragCurrentScreenPos = DragStartScreenPos;
+	}
+}
+
+void ABVPlayerController::OnSelectReleased()
+{
+	const bool bWasDrag = bIsDragSelecting && bDragMovedBeyondThreshold;
+
+	bIsDragSelecting = false;
+	bDragMovedBeyondThreshold = false;
+
+	if (bWasDrag)
+	{
+		// 박스 셀렉션에 정확히 1개만 걸렸으면 해당 상세 패널 표시
+		if (BoxSelectedActors.Num() == 1)
+		{
+			AActor* OnlyActor = BoxSelectedActors[0].Get();
+			if (ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OnlyActor))
+			{
+				HideBuildingDetail();
+				ShowUnitDetail(Unit);
+			}
+			else if (ABVBuildingBase* Building = Cast<ABVBuildingBase>(OnlyActor))
+			{
+				HideUnitDetail();
+				ShowBuildingDetail(Building);
+			}
+		}
+		else
+		{
+			// 여러 개 선택 → 기존 상세 패널 닫기
+			HideBuildingDetail();
+			HideUnitDetail();
+		}
+		return;
+	}
+
+	// 짧은 클릭 → 기존 단일 셀렉트 동작
+	SelectObject();
+}
+
+void ABVPlayerController::UpdateBoxHover()
+{
+	// 박스 사각형 계산 (스크린 좌표)
+	const FVector2D Min(FMath::Min(DragStartScreenPos.X, DragCurrentScreenPos.X),
+	                    FMath::Min(DragStartScreenPos.Y, DragCurrentScreenPos.Y));
+	const FVector2D Max(FMath::Max(DragStartScreenPos.X, DragCurrentScreenPos.X),
+	                    FMath::Max(DragStartScreenPos.Y, DragCurrentScreenPos.Y));
+
+	// 현재 박스 내부에 있는 액터 수집 (유닛 + 건물)
+	TArray<TWeakObjectPtr<AActor>> NewSet;
+
+	const FGenericTeamId MyTeamId = GetGenericTeamId();
+
+	auto TestAndAdd = [&](AActor* A)
+	{
+		if (!A) return;
+		if (!A->Implements<UBVDamageableInterface>()) return;
+
+		// 죽은 유닛 / 파괴된 건물 제외
+		if (IBVDamageableInterface::Execute_IsDestroyed(A)) return;
+		if (ABVAutobotBase* Bot = Cast<ABVAutobotBase>(A))
+		{
+			if (Bot->bIsDead) return;
+		}
+
+		// 아군만 선택 — 팀이 없거나(NoTeam) 다른 팀이면 제외
+		if (const IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(A))
+		{
+			const FGenericTeamId OtherId = TeamAgent->GetGenericTeamId();
+			if (OtherId == FGenericTeamId::NoTeam) return;
+			if (OtherId != MyTeamId) return;
+		}
+		else
+		{
+			return;
+		}
+
+		FVector2D Screen;
+		if (!ProjectWorldLocationToScreen(A->GetActorLocation(), Screen)) return;
+		if (Screen.X < Min.X || Screen.X > Max.X) return;
+		if (Screen.Y < Min.Y || Screen.Y > Max.Y) return;
+
+		NewSet.Emplace(A);
+	};
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	for (TActorIterator<ABVAutobotBase> It(World); It; ++It)
+	{
+		TestAndAdd(*It);
+	}
+	for (TActorIterator<ABVBuildingBase> It(World); It; ++It)
+	{
+		TestAndAdd(*It);
+	}
+
+	// 이전 박스에 있었지만 이번엔 빠진 액터 → un-hover
+	for (const TWeakObjectPtr<AActor>& Old : BoxSelectedActors)
+	{
+		AActor* OldActor = Old.Get();
+		if (!OldActor) continue;
+
+		bool bStillIn = false;
+		for (const TWeakObjectPtr<AActor>& N : NewSet)
+		{
+			if (N.Get() == OldActor) { bStillIn = true; break; }
+		}
+		if (!bStillIn)
+		{
+			if (OldActor != HoveredObject && OldActor != DetailBuilding.Get())
+			{
+				if (OldActor->Implements<UBVDamageableInterface>())
+				{
+					IBVDamageableInterface::Execute_SetHovered(OldActor, false);
+				}
+			}
+		}
+	}
+
+	// 이번 박스에 들어온 액터 → hover ON
+	for (const TWeakObjectPtr<AActor>& N : NewSet)
+	{
+		if (AActor* A = N.Get())
+		{
+			if (A->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(A, true);
+			}
+		}
+	}
+
+	BoxSelectedActors = NewSet;
+}
+
+void ABVPlayerController::ClearBoxSelection()
+{
+	for (const TWeakObjectPtr<AActor>& W : BoxSelectedActors)
+	{
+		AActor* A = W.Get();
+		if (!A) continue;
+		if (A == HoveredObject) continue;
+		if (A == DetailBuilding.Get()) continue;
+		if (A->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(A, false);
+		}
+	}
+	BoxSelectedActors.Reset();
 }

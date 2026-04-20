@@ -10,15 +10,20 @@ class ABVBuildingBase;
 class UImage;
 class UTextBlock;
 class UProgressBar;
+class UBVHealthComponent;
 
 /**
  * 건물 상세 패널.
- * 클릭된 건물의 아이콘 / 이름 / 설명 / 생성 중인 유닛 아이콘 + 리스폰 프로그레스 바를 표시한다.
+ * 클릭된 건물의 아이콘 / 이름 / 설명 / 체력 / 체력바 /
+ * 생성 중인 유닛 아이콘 + 리스폰 프로그레스 바를 표시한다.
+ * 스폰 유닛이 없으면 스폰 관련 위젯들은 숨긴다.
  *
  * UMG 바인드 이름은 아래 BindWidget 멤버명과 정확히 일치해야 한다.
  *  - BuildingIconImage      (UImage)
  *  - BuildingNameText       (UTextBlock)
  *  - DescriptionText        (UTextBlock)
+ *  - HealthText             (UTextBlock)        * 선택, OptionalBindWidget
+ *  - HealthBar              (UProgressBar)      * 선택, OptionalBindWidget
  *  - SpawnUnitIconImage     (UImage)            * 선택, OptionalBindWidget
  *  - SpawnUnitNameText      (UTextBlock)        * 선택, OptionalBindWidget
  *  - RespawnProgressBar     (UProgressBar)      * 선택, OptionalBindWidget
@@ -38,6 +43,13 @@ public:
 
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* DescriptionText;
+
+	// --- Health (optional) ---
+	UPROPERTY(meta = (BindWidgetOptional))
+	UTextBlock* HealthText;
+
+	UPROPERTY(meta = (BindWidgetOptional))
+	UProgressBar* HealthBar;
 
 	// --- Spawn Unit (optional) ---
 	UPROPERTY(meta = (BindWidgetOptional))
@@ -59,6 +71,12 @@ public:
 	void SetRespawnProgress(float Ratio);
 
 protected:
+	UFUNCTION()
+	void HandleHealthChanged(float NewRatio);
+
+	void UpdateHealthTextFromComponent();
+
 	// 현재 바인딩된 건물 (약한 참조로, destroy 되더라도 안전)
 	TWeakObjectPtr<ABVBuildingBase> BoundBuilding;
+	TWeakObjectPtr<UBVHealthComponent> BoundHealth;
 };

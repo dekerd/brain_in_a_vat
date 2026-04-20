@@ -110,4 +110,7 @@ protected:
 
 	// 0 이하면 거리 제한 없음 (Lifespan으로만 소멸)
 	float MaxTravelDistance = 0.f;
+
+	// ApplyDataAsset 중복 실행 방지 플래그. (Trail 이중 스폰 방지)
+	bool bDataAssetApplied = false;
 };

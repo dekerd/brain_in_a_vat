@@ -256,6 +256,41 @@ protected:
 	UPROPERTY(EditAnywhere, Category = "Audio")
 	float HoverSoundVolume = 0.5f;
 
+// Box Selection (drag-select)
+public:
+	bool IsBoxSelectActive() const { return bIsDragSelecting && bDragMovedBeyondThreshold; }
+	FVector2D GetBoxSelectStart() const { return DragStartScreenPos; }
+	FVector2D GetBoxSelectCurrent() const { return DragCurrentScreenPos; }
+
+protected:
+	// 드래그 셀렉션 입력 핸들러
+	void OnSelectPressed();
+	void OnSelectReleased();
+
+	// 박스 내부의 유닛/건물 호버 상태 업데이트
+	void UpdateBoxHover();
+
+	// 박스 셀렉션 리셋 — 현재 박스로 호버된 액터들을 모두 un-hover
+	void ClearBoxSelection();
+
+	// 박스 셀렉션 상태
+	UPROPERTY()
+	bool bIsDragSelecting = false;
+
+	UPROPERTY()
+	bool bDragMovedBeyondThreshold = false;
+
+	FVector2D DragStartScreenPos = FVector2D::ZeroVector;
+	FVector2D DragCurrentScreenPos = FVector2D::ZeroVector;
+
+	// 클릭 vs 드래그 구분을 위한 픽셀 임계치
+	UPROPERTY(EditDefaultsOnly, Category = "Selection")
+	float DragThresholdPixels = 6.f;
+
+	// 현재 박스에 들어있어서 호버 중인 액터들 (드래그 종료 후에도 hover 유지)
+	UPROPERTY()
+	TArray<TWeakObjectPtr<AActor>> BoxSelectedActors;
+
 // Announce Sound
 public:
 	UFUNCTION(BlueprintCallable, Category = "Audio|Announcer")

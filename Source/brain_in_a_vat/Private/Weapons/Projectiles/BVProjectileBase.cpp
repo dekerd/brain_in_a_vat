@@ -35,7 +35,7 @@ ABVProjectileBase::ABVProjectileBase()
 	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
 	CollisionComponent->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
-	CollisionComponent->SetCollisionResponseToChannel(ECC_Player, ECR_Ignore); 
+	CollisionComponent->SetCollisionResponseToChannel(ECC_Player, ECR_Overlap);
 	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
 	CollisionComponent->SetNotifyRigidBodyCollision(true); // For OnHit
 
@@ -157,6 +157,21 @@ void ABVProjectileBase::ApplyDataAsset()
 	if (!ProjectileData) return;
 	const UBVProjectileData* PData = ProjectileData;
 
+	// 중복 호출 가드 — 혹시라도 두 번 호출되면 Trail 이 두 번 스폰된다.
+	if (bDataAssetApplied)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[Projectile] ApplyDataAsset called twice on %s — skipping second call"),
+			*GetName());
+		return;
+	}
+	bDataAssetApplied = true;
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Projectile] ApplyDataAsset on %s: Trail=%s"),
+		*GetName(),
+		PData->TrailEffect ? *PData->TrailEffect->GetName() : TEXT("NULL"));
+
 	// --- Visual: Mesh ---
 	if (StaticMeshComponent && PData->ProjectileMesh)
 	{
@@ -167,21 +182,42 @@ void ABVProjectileBase::ApplyDataAsset()
 	}
 
 	// --- Trail VFX (Niagara) ---
+	// 트레일은 투사체 Root(= 발사 방향) 에 직접 붙인다.
+	// StaticMesh 에 붙이면 MeshRotation 과 TrailRotation 이 이중으로 적용되어
+	// 엉뚱한 방향으로 트레일이 뻗을 수 있음.
+	//
+	// [중복 방지] BP 에 NiagaraComponent 가 자식으로 붙어 있으면 DA가 스폰하는
+	// Trail 과 이중으로 재생되어 "trail 2개 (하나는 하늘로)" 버그가 발생한다.
+	// DA가 Trail 을 관리하므로, 런타임에 기존 NiagaraComponent 들은 전부 비활성/파괴.
+	{
+		TArray<UNiagaraComponent*> ExistingNCs;
+		GetComponents<UNiagaraComponent>(ExistingNCs);
+		for (UNiagaraComponent* NC : ExistingNCs)
+		{
+			if (!NC) continue;
+			UE_LOG(LogTemp, Warning,
+				TEXT("[Projectile] Stripping pre-existing NiagaraComponent '%s' on %s (DA manages trail)"),
+				*NC->GetName(), *GetName());
+			NC->Deactivate();
+			NC->DestroyComponent();
+		}
+	}
+
 	if (PData->TrailEffect)
 	{
-		USceneComponent* AttachParent = StaticMeshComponent
-			? static_cast<USceneComponent*>(StaticMeshComponent.Get())
-			: GetRootComponent();
-
-		UNiagaraFunctionLibrary::SpawnSystemAttached(
-			PData->TrailEffect,
-			AttachParent,
-			NAME_None,
-			FVector::ZeroVector,
-			FRotator::ZeroRotator,
-			EAttachLocation::KeepRelativeOffset,
-			true  /*bAutoActivate*/,
-			true  /*bAutoDestroy*/);
+		USceneComponent* AttachParent = GetRootComponent();
+		if (AttachParent)
+		{
+			UNiagaraFunctionLibrary::SpawnSystemAttached(
+				PData->TrailEffect,
+				AttachParent,
+				NAME_None,
+				PData->TrailLocationOffset,
+				PData->TrailRotation,
+				EAttachLocation::KeepRelativeOffset,
+				true  /*bAutoActivate*/,
+				true  /*bAutoDestroy*/);
+		}
 	}
 
 	// --- Audio (DA 값으로 덮어쓰기) ---

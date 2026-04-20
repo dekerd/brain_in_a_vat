@@ -77,7 +77,9 @@ public:
 	UStaticMeshComponent* GetStaticMeshComponent() { return StaticMeshComponent; }
 
 	UBoxComponent* GetBoxComponent() { return BoxComponent; }
-	
+
+	class UBVHealthComponent* GetHealthComponent() const { return HealthComponent; }
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "Components")
 	TObjectPtr<class USceneComponent> SceneRootComponent;

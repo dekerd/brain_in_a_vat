@@ -54,6 +54,14 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<class UNiagaraSystem> TrailEffect;
 
+	// Trail 이펙트의 로컬 회전 오프셋. 이펙트의 forward 축이 투사체 진행 방향과 맞지 않을 때 보정.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
+	FRotator TrailRotation = FRotator::ZeroRotator;
+
+	// Trail 이펙트의 로컬 위치 오프셋.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
+	FVector TrailLocationOffset = FVector::ZeroVector;
+
 	// 충돌 시 재생되는 Niagara 이펙트 (우선). 할당되어 있으면 Cascade는 무시됨.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Visual")
 	TObjectPtr<class UNiagaraSystem> HitNiagaraEffect;

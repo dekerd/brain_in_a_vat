@@ -6,6 +6,7 @@
 #include "AbilitySystemComponent.h"
 #include "Characters/BVAutobotBase.h"
 #include "Buildings/BVBuildingBase.h"
+#include "MainCharacter.h"
 
 
 // Sets default values for this component's properties
@@ -65,6 +66,10 @@ void UBVHealthComponent::OnHealthChanged(const FOnAttributeChangeData& Data)
 		else if (ABVBuildingBase* OwnerBuilding = Cast<ABVBuildingBase>(GetOwner()))
 		{
 			OwnerBuilding->DestroyBuilding();
+		}
+		else if (AMainCharacter* OwnerPlayer = Cast<AMainCharacter>(GetOwner()))
+		{
+			OwnerPlayer->HandleDeath();
 		}
 	}
 
