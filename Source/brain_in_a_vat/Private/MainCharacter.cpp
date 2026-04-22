@@ -42,14 +42,9 @@ AMainCharacter::AMainCharacter()
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Capsule
+	// Capsule — PlayerCharacter 프리셋 (Player 타입, Unit/Building Block, Projectile/Item Overlap 등)
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
-	GetCapsuleComponent()->SetCollisionProfileName(TEXT("Pawn"));
-	GetCapsuleComponent()->SetCollisionObjectType(ECC_Player);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Projectile, ECR_Overlap);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
+	GetCapsuleComponent()->SetCollisionProfileName(TEXT("PlayerCharacter"));
 	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true); // For OnHit
 
 	// Movement
@@ -161,6 +156,18 @@ void AMainCharacter::BeginPlay()
 		VisionSphere->SetSphereRadius(VisionRadius);
 		VisionSphere->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnVisionRadiusBeginOverlap);
 		VisionSphere->OnComponentEndOverlap.AddDynamic(this, &AMainCharacter::OnVisionRadiusEndOverlap);
+
+		// 바인딩 이전에 이미 겹쳐 있던 액터들(주로 레벨 배치 건물)은 초기 BeginOverlap
+		// 이벤트를 놓치므로 여기서 수동으로 처리.
+		TArray<AActor*> AlreadyOverlapping;
+		VisionSphere->GetOverlappingActors(AlreadyOverlapping);
+		for (AActor* Actor : AlreadyOverlapping)
+		{
+			if (Actor && Actor != this)
+			{
+				OnVisionRadiusBeginOverlap(VisionSphere, Actor, nullptr, 0, false, FHitResult());
+			}
+		}
 	}
 
 	// --- GAS 초기화 ---
@@ -338,7 +345,7 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 void AMainCharacter::OnVisionRadiusBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
                                                UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	
+
 	if (!OtherActor || OtherActor == this) return;
 
 	const IGenericTeamAgentInterface* TargetTeamAgent = Cast<IGenericTeamAgentInterface>(OtherActor);
@@ -347,7 +354,8 @@ void AMainCharacter::OnVisionRadiusBeginOverlap(UPrimitiveComponent* OverlappedC
 	FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 
-	if (OtherTeamId != FGenericTeamId::NoTeam && OtherTeamId != MyTeamId)
+	// 같은 팀이 아니면 전부 적대 대상(중립 거점 포함).
+	if (OtherTeamId != MyTeamId)
 	{
 		EnemiesInRange.AddUnique(OtherActor);
 	}

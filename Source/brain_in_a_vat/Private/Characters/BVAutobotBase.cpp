@@ -36,11 +36,11 @@ ABVAutobotBase::ABVAutobotBase()
 	AIControllerClass = ABVAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
-	// Capsule
+	// Capsule — Unit 프리셋으로 통일 (Pawn 타입, Building/Player Block, Projectile Overlap 등)
 	GetCapsuleComponent()->InitCapsuleSize(30.f, 42.0f);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Item, ECR_Ignore);
+	GetCapsuleComponent()->SetCollisionProfileName(TEXT("Unit"));
 
-	// Mesh and Collision
+	// Mesh — 마우스 호버 전용
 	float CapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -CapsuleHalfHeight), FRotator(0.0f, -90.0f, 0.0f));
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);

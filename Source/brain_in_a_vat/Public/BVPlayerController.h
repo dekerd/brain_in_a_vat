@@ -340,6 +340,13 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UUserWidget> BuildingDetailWidget;
 
+	// 거점(City) 전용 상세 패널 클래스. BuildingDetail과는 별개.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> CityDetailWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> CityDetailWidget;
+
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowBuildingDetail(ABVBuildingBase* InBuilding);
 
@@ -349,6 +356,31 @@ public:
 protected:
 	// 현재 상세 패널이 표시 중인 건물 (약한 참조)
 	TWeakObjectPtr<ABVBuildingBase> DetailBuilding;
+
+	// 현재 활성화된 상세 위젯(BuildingDetailWidget 또는 CityDetailWidget).
+	// Tick에서 위치/프로그레스 업데이트 시 이걸 참조.
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> ActiveDetailWidget;
+
+// Capture Announcement (거점 점령 화면 중앙 메시지)
+public:
+	// WBP_CaptureAnnouncement 같은, UBVCaptureAnnouncementWidget 파생 클래스 지정.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
+	TSubclassOf<class UUserWidget> CaptureAnnouncementWidgetClass;
+
+	UPROPERTY()
+	TObjectPtr<class UUserWidget> CaptureAnnouncementWidget;
+
+	// 메시지 표시 지속 시간(초). 이 시간 후 페이드아웃 → 숨김.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI", meta = (ClampMin = "0.1"))
+	float CaptureAnnouncementDuration = 3.0f;
+
+	// 중앙에 메시지를 띄운다. 3초 후 자동 숨김.
+	UFUNCTION(BlueprintCallable, Category = "UI")
+	void ShowCaptureAnnouncement(const FText& Message);
+
+protected:
+	FTimerHandle CaptureAnnouncementHideTimerHandle;
 
 // Unit Detail Widget
 public:

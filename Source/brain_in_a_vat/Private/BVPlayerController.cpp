@@ -26,7 +26,10 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetRenderingLibrary.h"
+#include "Buildings/BVCityBase.h"
 #include "Widget/BVBuildingDetailWidget.h"
+#include "Widget/BVCaptureAnnouncementWidget.h"
+#include "Widget/BVCityDetailWidget.h"
 #include "Widget/BVUnitDetailWidget.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
@@ -220,7 +223,8 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	HoveredObject = NewHitActor;
 
 	// 상세 패널이 열려 있을 때, 리스폰 프로그레스 갱신 + 건물 옆에 붙여 따라가기
-	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	// (BuildingDetailWidget 또는 CityDetailWidget 중 활성화된 쪽을 참조)
+	if (ActiveDetailWidget && ActiveDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		if (ABVBuildingBase* DetailB = DetailBuilding.Get())
 		{
@@ -230,15 +234,20 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 			}
 			else
 			{
-				// 1) 프로그레스 갱신
-				if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(BuildingDetailWidget))
+				// 1) 리스폰 프로그레스 갱신 (위젯 종류별로)
+				float Ratio = 0.f;
+				if (DetailB->RespawnInterval > 0.f && DetailB->SpawnUnitClass)
 				{
-					float Ratio = 0.f;
-					if (DetailB->RespawnInterval > 0.f && DetailB->SpawnUnitClass)
-					{
-						Ratio = FMath::Fmod(DetailB->ElapsedTime, DetailB->RespawnInterval) / DetailB->RespawnInterval;
-					}
+					Ratio = FMath::Fmod(DetailB->ElapsedTime, DetailB->RespawnInterval) / DetailB->RespawnInterval;
+				}
+
+				if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(ActiveDetailWidget))
+				{
 					DetailW->SetRespawnProgress(Ratio);
+				}
+				else if (UBVCityDetailWidget* CityW = Cast<UBVCityDetailWidget>(ActiveDetailWidget))
+				{
+					CityW->SetRespawnProgress(Ratio);
 				}
 
 				// 2) 건물 월드 위치 -> 위젯(슬레이트) 좌표 변환해 위젯 위치 갱신
@@ -248,13 +257,13 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 				{
 					// 스크린 픽셀 기준 단순 오프셋: 건물 중심에서 오른쪽으로 약간 띄우기
 					const FVector2D PanelOffset(60.f, -30.f);
-					BuildingDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
-					BuildingDetailWidget->SetVisibility(ESlateVisibility::Visible);
+					ActiveDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+					ActiveDetailWidget->SetVisibility(ESlateVisibility::Visible);
 				}
 				else
 				{
 					// 건물이 카메라 뒤/밖이면 숨김
-					BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+					ActiveDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 				}
 			}
 		}
@@ -311,13 +320,10 @@ ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Ot
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
 
-	if (OtherTeamId.GetId() == 255)
-	{
-		return ETeamAttitude::Neutral;
-	}
-
+	// 중립(EBVTeam::Neutral = 255)은 거점 점령을 위해 Hostile로 취급.
+	// 같은 팀만 Friendly, 나머지(다른 팀 / 중립 / 미지정)는 모두 Hostile.
 	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
-	
+
 }
 
 void ABVPlayerController::SetupInputComponent()
@@ -663,20 +669,60 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		}
 	}
 
-	// 최초 1회만 위젯 생성
-	if (!BuildingDetailWidget && BuildingDetailWidgetClass)
+	// 거점(City)과 일반 건물은 서로 다른 디테일 위젯 사용.
+	// 단, CityDetailWidgetClass가 비어 있으면 기존 BuildingDetailWidget으로 폴백.
+	ABVCityBase* City = Cast<ABVCityBase>(InBuilding);
+	const bool bUseCityWidget = (City != nullptr) && (CityDetailWidgetClass != nullptr);
+
+	// 반대편 위젯은 숨김.
+	if (bUseCityWidget)
 	{
-		BuildingDetailWidget = CreateWidget<UUserWidget>(this, BuildingDetailWidgetClass);
-		if (BuildingDetailWidget)
-		{
-			BuildingDetailWidget->AddToViewport();
-			BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
+		if (BuildingDetailWidget) BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+	else
+	{
+		if (CityDetailWidget) CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	if (!BuildingDetailWidget) return;
+	// 필요한 쪽 위젯을 lazy-init.
+	UUserWidget* TargetWidget = nullptr;
+
+	if (bUseCityWidget)
+	{
+		if (!CityDetailWidget)
+		{
+			CityDetailWidget = CreateWidget<UUserWidget>(this, CityDetailWidgetClass);
+			if (CityDetailWidget)
+			{
+				CityDetailWidget->AddToViewport();
+				CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}
+		TargetWidget = CityDetailWidget;
+	}
+	else
+	{
+		if (!BuildingDetailWidget && BuildingDetailWidgetClass)
+		{
+			BuildingDetailWidget = CreateWidget<UUserWidget>(this, BuildingDetailWidgetClass);
+			if (BuildingDetailWidget)
+			{
+				BuildingDetailWidget->AddToViewport();
+				BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}
+		TargetWidget = BuildingDetailWidget;
+	}
+
+	if (!TargetWidget)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[ShowBuildingDetail] No detail widget available. Check BP_PlayerController's BuildingDetailWidgetClass / CityDetailWidgetClass."));
+		return;
+	}
 
 	DetailBuilding = InBuilding;
+	ActiveDetailWidget = TargetWidget;
 
 	// 선택된 건물은 호버 이펙트를 강제로 켜둔다 (커서가 벗어나도 유지)
 	if (InBuilding->Implements<UBVDamageableInterface>())
@@ -684,12 +730,25 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		IBVDamageableInterface::Execute_SetHovered(InBuilding, true);
 	}
 
-	if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(BuildingDetailWidget))
+	// 위젯 종류에 맞는 초기화 호출.
+	// 거점이라도 CityDetailWidgetClass가 없어서 BuildingDetailWidget으로 폴백한 경우
+	// SetFromBuilding로 초기화 (건물 패널이 체력을 보여주게 됨).
+	if (bUseCityWidget)
 	{
-		DetailW->SetFromBuilding(InBuilding);
+		if (UBVCityDetailWidget* DetailW = Cast<UBVCityDetailWidget>(TargetWidget))
+		{
+			DetailW->SetFromCity(City);
+		}
+	}
+	else
+	{
+		if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(TargetWidget))
+		{
+			DetailW->SetFromBuilding(InBuilding);
+		}
 	}
 
-	BuildingDetailWidget->SetVisibility(ESlateVisibility::Visible);
+	TargetWidget->SetVisibility(ESlateVisibility::Visible);
 
 	// 오픈 즉시 한 번 위치를 잡아둠 (다음 틱부터 PlayerTick에서 이어서 갱신)
 	FVector2D WidgetPos;
@@ -697,7 +756,7 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 			this, InBuilding->GetActorLocation(), WidgetPos, false))
 	{
 		const FVector2D PanelOffset(60.f, -30.f);
-		BuildingDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+		TargetWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
 	}
 }
 
@@ -713,11 +772,68 @@ void ABVPlayerController::HideBuildingDetail()
 	}
 
 	DetailBuilding = nullptr;
+	ActiveDetailWidget = nullptr;
 
 	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
+	if (CityDetailWidget && CityDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void ABVPlayerController::ShowCaptureAnnouncement(const FText& Message)
+{
+	if (!CaptureAnnouncementWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[ShowCaptureAnnouncement] CaptureAnnouncementWidgetClass not set on PlayerController."));
+		return;
+	}
+
+	// Lazy-init.
+	if (!CaptureAnnouncementWidget)
+	{
+		CaptureAnnouncementWidget = CreateWidget<UUserWidget>(this, CaptureAnnouncementWidgetClass);
+		if (CaptureAnnouncementWidget)
+		{
+			// ZOrder 높게 해서 다른 UI 위에 표시.
+			CaptureAnnouncementWidget->AddToViewport(100);
+		}
+	}
+
+	if (!CaptureAnnouncementWidget) return;
+
+	// 메시지 설정 + 표시.
+	if (UBVCaptureAnnouncementWidget* AnnounceW = Cast<UBVCaptureAnnouncementWidget>(CaptureAnnouncementWidget))
+	{
+		AnnounceW->SetMessage(Message);
+	}
+	CaptureAnnouncementWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+	// 이미 띄워진 경우 타이머 리셋(최신 메시지 기준으로 3초 유지).
+	GetWorldTimerManager().ClearTimer(CaptureAnnouncementHideTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		CaptureAnnouncementHideTimerHandle,
+		FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (!CaptureAnnouncementWidget) return;
+
+			// 페이드 아웃 애니메이션 재생. 애니메이션 종료 시점에 위젯이 자동으로 Hidden 처리.
+			// (애니메이션 없으면 PlayFadeOut이 즉시 Hidden 처리)
+			if (UBVCaptureAnnouncementWidget* AnnounceW = Cast<UBVCaptureAnnouncementWidget>(CaptureAnnouncementWidget))
+			{
+				AnnounceW->PlayFadeOut();
+			}
+			else
+			{
+				CaptureAnnouncementWidget->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}),
+		CaptureAnnouncementDuration,
+		false);
 }
 
 void ABVPlayerController::ShowUnitDetail(ABVAutobotBase* InUnit)

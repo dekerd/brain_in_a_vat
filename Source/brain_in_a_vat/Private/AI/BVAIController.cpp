@@ -79,11 +79,8 @@ ETeamAttitude::Type ABVAIController::GetTeamAttitudeTowards(const AActor& Other)
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
 
-	if (MyTeamId == FGenericTeamId::NoTeam || OtherTeamId == FGenericTeamId::NoTeam)
-	{
-		return ETeamAttitude::Neutral;
-	}
-
+	// 중립(EBVTeam::Neutral = 255 = NoTeam)은 거점 점령을 위해 Hostile로 취급.
+	// 같은 팀만 Friendly, 나머지(다른 팀 / 중립 / 미지정)는 모두 Hostile.
 	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
 }
 

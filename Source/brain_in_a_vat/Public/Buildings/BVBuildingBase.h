@@ -144,10 +144,16 @@ public:
 	class UCombatAttributeSet* GetCombatAttributeSet() const { return CombatAttributes; }
 
 // Damage Detecting
+public:
+	// true면 Player 팀 소유의 이 건물이 데미지를 받을 때 "Base Under Attack" 어나운스 음성을 재생.
+	// 거점(City)처럼 일반 기지가 아닌 구조물은 false로 꺼둬서 스트레이 피해에 반응하지 않게 함.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Audio")
+	bool bPlayBaseUnderAttackAnnouncer = true;
+
 protected:
 
 	float PreviousHealthRatio = 1.0f;
-	
+
 	UFUNCTION()
 	void HandleHealthChangedForAudio(float NewHealthRatio);
 
@@ -165,7 +171,7 @@ public:
 	float ElapsedTime;
 
 	UFUNCTION()
-	void SpawnUnit();
+	virtual void SpawnUnit();
 	FTimerHandle SpawnTimerHandle;
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Unit")
@@ -178,6 +184,48 @@ public:
 public:
 	virtual void DestroyBuilding();
 	bool bIsDestroyed = false;
+
+	// HP가 0에 도달했을 때의 처리 훅. 기본 구현은 DestroyBuilding()을 호출.
+	// 점령 가능한 거점(ABVCityBase)은 이를 오버라이드해 파괴 대신 팀 전환을 수행한다.
+	virtual void HandleHealthDepleted();
+
+	// 투사체 등 데미지 원(原)이 이 건물에 피해를 입힐 때 호출. 마지막 가해자 팀을 기록.
+	void RecordDamageFrom(const AActor* Attacker);
+
+	// 데미지를 입었을 때 파생 클래스가 반응할 수 있는 공용 훅.
+	// HP 변동 경로와 별개로, 가해자와 데미지량을 함께 받음.
+	// 기본 구현은 RecordDamageFrom만 수행. 거점(ABVCityBase)은 오버라이드해 점령 진행도 반영.
+	virtual void HandleDamageReceived(const AActor* Attacker, float DamageAmount);
+
+protected:
+	// 마지막으로 이 건물에 데미지를 입힌 주체의 팀. 점령 판정에 사용된다.
+	EBVTeam LastDamagerTeam = EBVTeam::None;
+
+// Emission Pulse (생산 중일 때 머티리얼이 깜빡이게 하는 공용 훅)
+public:
+	// "생산 중" 상태를 머티리얼에 전달할 때 사용할 스칼라 파라미터 이름.
+	// 머티리얼 쪽에서 같은 이름의 Scalar Parameter를 Time 기반 펄스 게이트로 사용.
+	UPROPERTY(EditAnywhere, Category = "Building|Emission")
+	FName IsProducingParamName = TEXT("IsProducing");
+
+	// 머티리얼의 Emissive Color를 런타임에 바꿀 때 사용할 벡터 파라미터 이름.
+	// 머티리얼 쪽에서 같은 이름의 VectorParameter가 EmissionColor 체인에 꽂혀 있어야 함.
+	UPROPERTY(EditAnywhere, Category = "Building|Emission")
+	FName EmissionColorParamName = TEXT("EmissionColor");
+
+protected:
+	// StaticMesh의 각 머티리얼 슬롯을 MID로 래핑해 런타임 파라미터 조작을 가능하게 함.
+	virtual void InitDynamicMaterials();
+
+	// 머티리얼의 IsProducing 스칼라 파라미터를 0/1로 설정해 펄스 on/off.
+	virtual void SetIsProducing(bool bIsProducing);
+
+	// 머티리얼의 EmissionColor 벡터 파라미터 설정.
+	// HDR(값 > 1) 허용 — bloom으로 번짐 강조하고 싶을 때 활용.
+	virtual void SetEmissionColor(const FLinearColor& InColor);
+
+	UPROPERTY()
+	TArray<TObjectPtr<UMaterialInstanceDynamic>> DynamicMaterials;
 	
 // Widgets
 public:

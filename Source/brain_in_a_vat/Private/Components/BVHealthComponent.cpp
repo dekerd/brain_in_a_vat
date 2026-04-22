@@ -65,7 +65,8 @@ void UBVHealthComponent::OnHealthChanged(const FOnAttributeChangeData& Data)
 		}
 		else if (ABVBuildingBase* OwnerBuilding = Cast<ABVBuildingBase>(GetOwner()))
 		{
-			OwnerBuilding->DestroyBuilding();
+			// 기본 구현은 DestroyBuilding 호출. 거점(ABVCityBase)은 팀 전환으로 오버라이드.
+			OwnerBuilding->HandleHealthDepleted();
 		}
 		else if (AMainCharacter* OwnerPlayer = Cast<AMainCharacter>(GetOwner()))
 		{

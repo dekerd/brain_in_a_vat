@@ -6,6 +6,7 @@
 #include "Components/StaticMeshComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "Collision/BVCollision.h"
+#include "Buildings/BVBuildingBase.h"
 #include "Characters/BVAutobotBase.h"
 #include "AbilitySystemInterface.h"
 #include "AbilitySystemComponent.h"
@@ -26,17 +27,11 @@ ABVProjectileBase::ABVProjectileBase()
 {
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Collision
+	// Collision — Projectile 프리셋 (Pawn/Building/Player Overlap, WorldStatic Block)
 	CollisionComponent = CreateDefaultSubobject<USphereComponent>(TEXT("Collision"));
 	RootComponent = CollisionComponent;
 	CollisionComponent->InitSphereRadius(10.f);
-	CollisionComponent->SetCollisionEnabled(ECollisionEnabled::QueryOnly);
-	CollisionComponent->SetCollisionObjectType(ECC_Projectile);
-	CollisionComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-	CollisionComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
-	CollisionComponent->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
-	CollisionComponent->SetCollisionResponseToChannel(ECC_Player, ECR_Overlap);
-	CollisionComponent->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
+	CollisionComponent->SetCollisionProfileName(TEXT("Projectile"));
 	CollisionComponent->SetNotifyRigidBodyCollision(true); // For OnHit
 
 	CollisionComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVProjectileBase::OnCollisionBeginOverlap);
@@ -112,15 +107,77 @@ void ABVProjectileBase::Tick(float DeltaTime)
 	}
 }
 
-void ABVProjectileBase::SpawnHitVFX(AActor* HitActor)
+void ABVProjectileBase::SpawnHitVFX(AActor* HitActor, const FHitResult* SurfaceHit)
 {
-	// 피격 대상이 있으면, 충돌 지점(투사체 위치)과 대상 중심 사이를 70% 보간.
-	// "너무 바깥도, 너무 정중앙도 아닌" 자연스러운 위치.
 	FVector SpawnLoc = GetActorLocation();
-	if (HitActor)
+
+	// 1순위: Overlap/Sweep에서 직접 받은 ImpactPoint. 표면 정확.
+	if (SurfaceHit && SurfaceHit->bBlockingHit && !SurfaceHit->ImpactPoint.IsNearlyZero())
 	{
-		SpawnLoc = FMath::Lerp(GetActorLocation(), HitActor->GetActorLocation(), 0.7f);
+		SpawnLoc = SurfaceHit->ImpactPoint;
 	}
+	else if (HitActor)
+	{
+		// 2순위: 타겟의 콜리전 프리미티브에 대해 "가장 가까운 표면 점"을 찾음.
+		// 큰 타겟(거점 등)이라서 투사체가 내부로 파고든 상황에서도 표면에 VFX가 뜸.
+		FVector BestPoint = SpawnLoc;
+		float BestDistSq = TNumericLimits<float>::Max();
+		bool bFoundSurface = false;
+
+		TArray<UPrimitiveComponent*> Prims;
+		HitActor->GetComponents<UPrimitiveComponent>(Prims);
+		for (UPrimitiveComponent* Prim : Prims)
+		{
+			if (!Prim) continue;
+			if (Prim->GetCollisionEnabled() == ECollisionEnabled::NoCollision) continue;
+
+			FVector Point;
+			const float Dist = Prim->GetClosestPointOnCollision(GetActorLocation(), Point);
+			if (Dist < 0.f) continue; // 이 프리미티브는 질의 불가
+
+			// Dist == 0 은 투사체가 내부에 있음 → 같은 점 반환이라 사용 불가. 다른 프리미티브 시도.
+			if (Dist <= KINDA_SMALL_NUMBER) continue;
+
+			const float DistSq = FVector::DistSquared(GetActorLocation(), Point);
+			if (DistSq < BestDistSq)
+			{
+				BestDistSq = DistSq;
+				BestPoint = Point;
+				bFoundSurface = true;
+			}
+		}
+
+		if (bFoundSurface)
+		{
+			SpawnLoc = BestPoint;
+		}
+		else
+		{
+			// 3순위 (폴백): 투사체 속도 반대방향으로 line trace해서 표면을 찾음.
+			// 내부에 완전히 들어간 케이스 대응.
+			FVector TraceDir = -GetActorForwardVector();
+			if (UProjectileMovementComponent* Move = FindComponentByClass<UProjectileMovementComponent>())
+			{
+				if (!Move->Velocity.IsNearlyZero())
+				{
+					TraceDir = -Move->Velocity.GetSafeNormal();
+				}
+			}
+
+			const FVector TraceStart = GetActorLocation() + TraceDir * 1000.f;
+			const FVector TraceEnd   = GetActorLocation();
+			FHitResult BackHit;
+			FCollisionQueryParams QueryParams(SCENE_QUERY_STAT(ProjectileBackTrace), false, this);
+			QueryParams.AddIgnoredActor(this);
+			if (GetWorld()->LineTraceSingleByChannel(BackHit, TraceStart, TraceEnd, ECC_Visibility, QueryParams)
+				&& BackHit.GetActor() == HitActor)
+			{
+				SpawnLoc = BackHit.ImpactPoint;
+			}
+			// 그래도 못 찾으면 현재 위치 유지 (기존 동작). 내부 폭발보다 덜 나쁜 선택지 없음.
+		}
+	}
+
 	const FRotator SpawnRot = GetActorRotation();
 
 	if (HitNiagaraEffect)
@@ -280,7 +337,14 @@ void ABVProjectileBase::SetLaunchVelocity(const FVector& LaunchVelocity)
 void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
                                                 UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	
+	// 데미지 플로우 추적용 임시 로그. 원인 파악 후 지워도 됨.
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Projectile] Overlap: Proj=%s Other=%s (class=%s) Comp=%s"),
+		*GetName(),
+		OtherActor ? *OtherActor->GetName() : TEXT("NULL"),
+		OtherActor ? *OtherActor->GetClass()->GetName() : TEXT("NULL"),
+		OtherComp ? *OtherComp->GetName() : TEXT("NULL"));
+
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 	if (!OtherActor->Implements<UBVDamageableInterface>()) return;
 	if (IBVDamageableInterface::Execute_IsDestroyed(OtherActor)) return;
@@ -319,6 +383,17 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 	if (!SpecHandle.IsValid()) return;
 
 	SpecHandle.Data->SetSetByCallerMagnitude(TAG_Data_Damage, -DamageAmount);
+
+	// 빌딩이면 데미지 훅 호출(가해자 팀 기록 + 거점 점령 진행도 반영 등).
+	if (ABVBuildingBase* TargetBuilding = Cast<ABVBuildingBase>(OtherActor))
+	{
+		TargetBuilding->HandleDamageReceived(GetInstigator(), DamageAmount);
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[Projectile] Applying GE to %s: Amount=%.1f MyTeam=%d TargetTeam=%d"),
+		*OtherActor->GetName(), DamageAmount, (int32)MyTeamId.GetId(), (int32)TargetTeamId.GetId());
+
 	TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 
 	if (ABVLaserBeamBase* LaserBeam = Cast<ABVLaserBeamBase>(this))
@@ -331,7 +406,7 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 		UGameplayStatics::PlaySoundAtLocation(this, HitSound, GetActorLocation(), HitSoundVolume);
 	}
 
-	SpawnHitVFX(OtherActor);
+	SpawnHitVFX(OtherActor, bFromSweep ? &SweepResult : nullptr);
 
 	Destroy();
 
@@ -340,7 +415,7 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 void ABVProjectileBase::OnCollisionHit(UPrimitiveComponent* HitComponent, AActor* OtherActor,
 	UPrimitiveComponent* OtherComp, FVector NormalImpulse, const FHitResult& Hit)
 {
-	SpawnHitVFX(OtherActor);
+	SpawnHitVFX(OtherActor, &Hit);
 
 	if (HitSound)
 	{
