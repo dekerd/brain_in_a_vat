@@ -59,7 +59,8 @@ void ABVDefenseTower::BeginPlay()
 			FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
 			FGenericTeamId MyTeamId = GetGenericTeamId();
 
-			if (OtherTeamId != FGenericTeamId::NoTeam && OtherTeamId != MyTeamId)
+			// 같은 팀이 아니면 전부 적대 대상(중립 거점 포함).
+			if (OtherTeamId != MyTeamId)
 			{
 				EnemiesInRange.AddUnique(Actor);
 			}
@@ -85,7 +86,8 @@ void ABVDefenseTower::OnAttackRangeBeginOverlap(UPrimitiveComponent* OverlappedC
 	FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 
-	if (OtherTeamId != FGenericTeamId::NoTeam && OtherTeamId != MyTeamId)
+	// 같은 팀이 아니면 전부 적대 대상(중립 거점 포함).
+	if (OtherTeamId != MyTeamId)
 	{
 		EnemiesInRange.AddUnique(OtherActor);
 	}

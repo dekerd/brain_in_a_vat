@@ -39,6 +39,12 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	TObjectPtr<UAnimMontage> AttackMontage;
 
+	// 공격 몽타주 재생속도 배수. 기본 1.0 = 발사 주기(1/AttackSpeed초)에 정확히 맞춤.
+	// 2.0 = 2배속(몽타주 빨리 끝나고 남는 시간에 전진), 0.5 = 절반속도.
+	// 0 이하면 1.0 으로 간주.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info", meta = (ClampMin = "0.01"))
+	float AttackMontagePlayRateMultiplier = 1.f;
+
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Info")
 	TObjectPtr<UAnimMontage> DeathMontage;
 

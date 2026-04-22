@@ -17,7 +17,8 @@
 
 
 // Sets default values
-ABVAIController::ABVAIController()
+ABVAIController::ABVAIController(const FObjectInitializer& ObjectInitializer)
+	: Super(ObjectInitializer.SetDefaultSubobjectClass<UCrowdFollowingComponent>(TEXT("PathFollowingComponent")))
 {
 
 	// Blackboard and Behavior Tree
@@ -78,11 +79,8 @@ ETeamAttitude::Type ABVAIController::GetTeamAttitudeTowards(const AActor& Other)
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
 
-	if (MyTeamId == FGenericTeamId::NoTeam || OtherTeamId == FGenericTeamId::NoTeam)
-	{
-		return ETeamAttitude::Neutral;
-	}
-
+	// 중립(EBVTeam::Neutral = 255 = NoTeam)은 거점 점령을 위해 Hostile로 취급.
+	// 같은 팀만 Friendly, 나머지(다른 팀 / 중립 / 미지정)는 모두 Hostile.
 	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
 }
 
@@ -175,8 +173,58 @@ void ABVAIController::CheckLaneArrival()
 	APawn* ControllingPawn = GetPawn();
 	if (!ControllingPawn || !AssignedLane) return;
 
-	const FVector Foot = AssignedLane->GetPerpendicularFoot(ControllingPawn->GetActorLocation(), LaneJoinOffset);
-	const float DistToFoot = FVector::Dist2D(ControllingPawn->GetActorLocation(), Foot);
+	const FVector PawnLoc = ControllingPawn->GetActorLocation();
+	FVector Foot = AssignedLane->GetPerpendicularFoot(PawnLoc, LaneJoinOffset);
+	const float DistToFoot = FVector::Dist2D(PawnLoc, Foot);
+
+	// --- Stuck detection: if pawn hasn't made progress toward Foot, push a detour waypoint ---
+	// Tick interval is 0.5s; if pawn moved < 30 units in that window, it's likely blocked.
+	const float MovedThisTick = FVector::Dist2D(PawnLoc, LastPawnLocation);
+	LastPawnLocation = PawnLoc;
+
+	if (MovedThisTick < 30.f && DistToFoot > 500.f)
+	{
+		StuckAccumTime += 0.5f;
+	}
+	else
+	{
+		StuckAccumTime = 0.f;
+	}
+
+	// If stuck 1s+, try routing via a lateral detour point and force BT to re-path by issuing MoveToLocation
+	if (StuckAccumTime >= 1.0f)
+	{
+		// Alternate detour direction each time we get stuck so we try both sides
+		DetourSign = (DetourSign >= 0) ? -1 : 1;
+
+		// Lateral offset perpendicular to the pawn->Foot direction
+		const FVector ToFoot = (Foot - PawnLoc).GetSafeNormal2D();
+		const FVector Lateral = FVector::CrossProduct(ToFoot, FVector::UpVector).GetSafeNormal2D();
+		const float DetourDist = 600.f;
+		const FVector Detour = PawnLoc + ToFoot * 200.f + Lateral * DetourDist * (float)DetourSign;
+
+		if (BlackboardComponent)
+		{
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), Detour);
+		}
+
+		// Also kick an explicit path-following move so the unit starts moving even if BT MoveTo stalled
+		FAIMoveRequest Req;
+		Req.SetGoalLocation(Detour);
+		Req.SetAcceptanceRadius(50.f);
+		Req.SetUsePathfinding(true);
+		Req.SetAllowPartialPath(true);
+		MoveTo(Req);
+
+		StuckAccumTime = 0.f;
+		return;
+	}
+
+	// Normal case: keep TargetLocation fresh so BT MoveTo re-paths around newly spawned obstacles
+	if (BlackboardComponent)
+	{
+		BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), Foot);
+	}
 
 	// 수선의 발 100 유닛 이내면 레인 합류로 판정
 	if (DistToFoot < 500.f)

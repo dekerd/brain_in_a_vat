@@ -9,6 +9,7 @@
 #include "Components/WidgetComponent.h"
 #include "Components/BoxComponent.h"
 #include "Components/BVHealthComponent.h"
+#include "Materials/MaterialInstanceDynamic.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
 #include "DrawDebugHelpers.h"
@@ -36,19 +37,13 @@ ABVBuildingBase::ABVBuildingBase()
 	BoxComponent = CreateDefaultSubobject<UBoxComponent>(TEXT("Box"));
 	BoxComponent->SetupAttachment(RootComponent);
 	BoxComponent->InitBoxExtent(FVector(30.f, 30.f, 30.f));
-	BoxComponent->SetCollisionEnabled(ECollisionEnabled::QueryAndPhysics);
+	BoxComponent->SetCollisionProfileName(TEXT("Building"));
 	BoxComponent->SetGenerateOverlapEvents(true);
-	BoxComponent->SetCollisionResponseToAllChannels(ECR_Ignore);
-	BoxComponent->SetCollisionObjectType(ECC_Building);
-
-	BoxComponent->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
-	BoxComponent->SetCollisionResponseToChannel(ECC_WorldDynamic, ECR_Overlap);
-	BoxComponent->SetCollisionResponseToChannel(ECC_Pawn, ECR_Block);
-	BoxComponent->SetCollisionResponseToChannel(ECC_Visibility, ECR_Block);
 
 	StaticMeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("StaticMesh"));
 	StaticMeshComponent->SetupAttachment(RootComponent);
-	StaticMeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// 마우스 호버 전용. 실루엣을 정확히 잡으려고 메시 자체의 콜리전 사용.
+	// 게임플레이 충돌(Projectile/Pawn/Vision 등)은 BoxComponent가 담당.
 	StaticMeshComponent->SetCollisionProfileName(TEXT("Hoverable"));
 
 	// [GAS] ASC & Attributes
@@ -112,18 +107,103 @@ void ABVBuildingBase::DestroyBuilding()
 	GetWorldTimerManager().ClearTimer(SpawnTimerHandle);
 	ElapsedTime = 0.0f;
 
+	// 생산 중 펄스 off
+	SetIsProducing(false);
+
 	// Hide Widget
 	if (OverheadWidgetComponent)
 		OverheadWidgetComponent->SetVisibility(false);
 
 	// Destroy
 	SetLifeSpan(1.0f);
-	
+
 }
 
 void ABVBuildingBase::FinishConstruction()
 {
-	
+
+}
+
+void ABVBuildingBase::HandleHealthDepleted()
+{
+	DestroyBuilding();
+}
+
+void ABVBuildingBase::HandleDamageReceived(const AActor* Attacker, float DamageAmount)
+{
+	// 기본 동작은 가해자 팀을 기록하는 것까지.
+	// 파생 클래스(거점 등)는 이후 Super 호출 후 점령 로직을 더함.
+	RecordDamageFrom(Attacker);
+}
+
+void ABVBuildingBase::RecordDamageFrom(const AActor* Attacker)
+{
+	if (!Attacker) return;
+
+	if (const IGenericTeamAgentInterface* TeamAgent = Cast<const IGenericTeamAgentInterface>(Attacker))
+	{
+		const FGenericTeamId Id = TeamAgent->GetGenericTeamId();
+		LastDamagerTeam = static_cast<EBVTeam>(Id.GetId());
+		return;
+	}
+
+	// Pawn이면 컨트롤러에서도 확인
+	if (const APawn* Pawn = Cast<APawn>(Attacker))
+	{
+		if (const AController* Controller = Pawn->GetController())
+		{
+			if (const IGenericTeamAgentInterface* ControllerAgent = Cast<const IGenericTeamAgentInterface>(Controller))
+			{
+				const FGenericTeamId Id = ControllerAgent->GetGenericTeamId();
+				LastDamagerTeam = static_cast<EBVTeam>(Id.GetId());
+			}
+		}
+	}
+}
+
+void ABVBuildingBase::InitDynamicMaterials()
+{
+	DynamicMaterials.Reset();
+
+	if (!StaticMeshComponent) return;
+
+	const int32 NumMaterials = StaticMeshComponent->GetNumMaterials();
+	DynamicMaterials.Reserve(NumMaterials);
+
+	for (int32 Index = 0; Index < NumMaterials; ++Index)
+	{
+		UMaterialInterface* SourceMat = StaticMeshComponent->GetMaterial(Index);
+		if (!SourceMat) continue;
+
+		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(SourceMat, this);
+		if (!MID) continue;
+
+		StaticMeshComponent->SetMaterial(Index, MID);
+		DynamicMaterials.Add(MID);
+	}
+}
+
+void ABVBuildingBase::SetIsProducing(bool bIsProducing)
+{
+	const float Value = bIsProducing ? 1.f : 0.f;
+	for (UMaterialInstanceDynamic* MID : DynamicMaterials)
+	{
+		if (MID)
+		{
+			MID->SetScalarParameterValue(IsProducingParamName, Value);
+		}
+	}
+}
+
+void ABVBuildingBase::SetEmissionColor(const FLinearColor& InColor)
+{
+	for (UMaterialInstanceDynamic* MID : DynamicMaterials)
+	{
+		if (MID)
+		{
+			MID->SetVectorParameterValue(EmissionColorParamName, InColor);
+		}
+	}
 }
 
 UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
@@ -135,7 +215,9 @@ void ABVBuildingBase::HandleHealthChangedForAudio(float NewHealthRatio)
 {
 	if (NewHealthRatio < PreviousHealthRatio)
 	{
-		if (TeamType == EBVTeam::Player)
+		// 거점은 기지가 아니라 점령 가능한 구조물 → 어나운스 비활성 (bPlayBaseUnderAttackAnnouncer=false).
+		// 또한 팀 전환 직후 날아오던 잔여 투사체가 맞는 엣지 케이스도 이 플래그로 억제됨.
+		if (bPlayBaseUnderAttackAnnouncer && TeamType == EBVTeam::Player)
 		{
 			if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(GetWorld()->GetFirstPlayerController()))
 			{
@@ -143,7 +225,7 @@ void ABVBuildingBase::HandleHealthChangedForAudio(float NewHealthRatio)
 			}
 		}
 	}
-	
+
 	PreviousHealthRatio = NewHealthRatio;
 }
 
@@ -334,7 +416,15 @@ void ABVBuildingBase::BeginPlay()
 
 	ElapsedTime = 0.0f;
 
-	if (SpawnUnitClass && RespawnInterval > 0.f)
+	// 런타임에 IsProducing 파라미터를 조작하려면 MID 필요.
+	InitDynamicMaterials();
+
+	const bool bWillProduce = SpawnUnitClass && RespawnInterval > 0.f;
+
+	// 생산 중 펄스 on/off 초기 상태 반영 (머티리얼에 IsProducing 파라미터 없어도 안전).
+	SetIsProducing(bWillProduce);
+
+	if (bWillProduce)
 	{
 		GetWorldTimerManager().SetTimer(
 			SpawnTimerHandle,
@@ -345,7 +435,7 @@ void ABVBuildingBase::BeginPlay()
 			RespawnInterval
 			);
 	}
-	
+
 }
 
 
@@ -361,14 +451,19 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 		TeamType = BuildingData->TeamType;
 	}
 
-	if (BuildingData->SpawnUnitClass)
+	// 스폰 관련 필드는 bCanSpawnUnits가 true일 때만 DA 값 적용.
+	// false면 DA의 잔존 데이터로 덮어쓰지 않는다.
+	if (BuildingData->bCanSpawnUnits)
 	{
-		SpawnUnitClass = BuildingData->SpawnUnitClass;
-	}
-	
-	if (BuildingData->SpawnInterval > 0.f)
-	{
-		RespawnInterval = BuildingData->SpawnInterval;
+		if (BuildingData->SpawnUnitClass)
+		{
+			SpawnUnitClass = BuildingData->SpawnUnitClass;
+		}
+
+		if (BuildingData->SpawnInterval > 0.f)
+		{
+			RespawnInterval = BuildingData->SpawnInterval;
+		}
 	}
 
 	FGameplayEffectContextHandle GEContext = ASC->MakeEffectContext();
@@ -379,10 +474,15 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 
 	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.MaxHealth")), BuildingData->MaxHealth);
 	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Health")), BuildingData->MaxHealth);
-	GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), BuildingData->Damage);
-	
+
+	// 공격력은 bCanAttack이 true일 때만 적용.
+	if (BuildingData->bCanAttack)
+	{
+		GESpec.Data->SetSetByCallerMagnitude(FGameplayTag::RequestGameplayTag(TEXT("Data.Damage")), BuildingData->Damage);
+	}
+
 	ASC->ApplyGameplayEffectSpecToSelf(*GESpec.Data.Get());
-	
+
 }
 
 void ABVBuildingBase::SpawnUnit()
@@ -417,8 +517,16 @@ void ABVBuildingBase::SpawnUnit()
 
 		if (DistanceToLane <= SpawnRadius)
 		{
-			// 레인이 반경 안에 있음 -> 레인 위의 최단거리 지점에 그대로 스폰
-			SpawnLocation = FVector(FootOnLane.X, FootOnLane.Y, BuildingLoc.Z);
+			// 레인이 건물 반경 안/내부를 지나감.
+			// 수선의 발에 그대로 스폰하면 건물 안쪽에 꽂혀서 낙하 버그 발생.
+			// → 수선의 발에서 "적 베이스 방향"으로 SpawnRadius만큼 밀어서 건물 밖에 배치.
+			FVector LaneDir =
+				(AssignedLane->GetEnemyBaseLocation() - AssignedLane->GetFriendlyBaseLocation()).GetSafeNormal2D();
+			if (LaneDir.IsNearlyZero())
+			{
+				LaneDir = FVector(GetActorForwardVector().X, GetActorForwardVector().Y, 0.f).GetSafeNormal();
+			}
+			SpawnLocation = FVector(FootOnLane.X, FootOnLane.Y, BuildingLoc.Z) + LaneDir * SpawnRadius;
 		}
 		else if (!BuildingToFoot.IsNearlyZero())
 		{
@@ -472,31 +580,29 @@ void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 
 		if (bIsHovered)
 		{
-
+			// 호버 색은 attitude가 아닌 실제 팀 ID로 직접 판정.
+			// (attitude는 거점 점령을 위해 Neutral→Hostile로 바꿔놔서 호버 색까지 빨강으로 오인됨)
 			APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
 			IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC);
 
 			if (TeamAgentPC)
 			{
-				ETeamAttitude::Type Attitude = TeamAgentPC->GetTeamAttitudeTowards((*this));
+				const EBVTeam MyTeam = TeamType;
+				const FGenericTeamId PlayerId = TeamAgentPC->GetGenericTeamId();
 
-				switch (Attitude)
+				if (MyTeam == EBVTeam::Neutral)
 				{
-				case ETeamAttitude::Friendly:
-					Stencil = 1;
-					break;
-				case ETeamAttitude::Hostile:
-					Stencil = 2;
-					break;
-				case ETeamAttitude::Neutral:
-					Stencil = 3;
-					break;
-				default:
-					Stencil = 0;
-					break;
+					Stencil = 3; // 중립 (파랑)
+				}
+				else if (MyTeam == static_cast<EBVTeam>(PlayerId.GetId()))
+				{
+					Stencil = 1; // 아군 (초록)
+				}
+				else
+				{
+					Stencil = 2; // 적 (빨강)
 				}
 			}
-
 		}
 		
 		StaticMeshComponent->SetRenderCustomDepth(bIsHovered);

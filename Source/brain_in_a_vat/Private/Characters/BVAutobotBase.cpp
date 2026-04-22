@@ -36,11 +36,11 @@ ABVAutobotBase::ABVAutobotBase()
 	AIControllerClass = ABVAIController::StaticClass();
 	AutoPossessAI = EAutoPossessAI::PlacedInWorldOrSpawned;
 
-	// Capsule
+	// Capsule — Unit 프리셋으로 통일 (Pawn 타입, Building/Player Block, Projectile Overlap 등)
 	GetCapsuleComponent()->InitCapsuleSize(30.f, 42.0f);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Item, ECR_Ignore);
+	GetCapsuleComponent()->SetCollisionProfileName(TEXT("Unit"));
 
-	// Mesh and Collision
+	// Mesh — 마우스 호버 전용
 	float CapsuleHalfHeight = GetCapsuleComponent()->GetUnscaledCapsuleHalfHeight();
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -CapsuleHalfHeight), FRotator(0.0f, -90.0f, 0.0f));
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
@@ -312,11 +312,17 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 
 	UBVAnimInstance* AnimInst = Cast<UBVAnimInstance>(GetMesh() ? GetMesh()->GetAnimInstance() : nullptr);
 
-	// 전투 포즈 해제 — idle 강제 OFF + 재생 중인 공격 몽타주 정지.
-	// 사거리 안에서 사격 중이면 아래에서 다시 idle ON / 몽타주는 FireProjectile에서 재생.
+	// 전투 포즈 해제 — ForceIdle만 OFF. 몽타주는 자연 완주하도록 건드리지 않는다.
+	// (Montage_Stop을 매 tick 걸어버리면 방금 시작된 공격 몽타주가 즉시 잘림)
 	auto ExitCombatPose = [&]()
 	{
 		if (AnimInst) AnimInst->SetForceIdle(false);
+	};
+
+	// 죽음 시에만 확실히 몽타주 중단
+	if (bIsDead)
+	{
+		ExitCombatPose();
 		if (AttackMontage)
 		{
 			if (UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
@@ -327,9 +333,8 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 				}
 			}
 		}
-	};
-
-	if (bIsDead) { ExitCombatPose(); return; }
+		return;
+	}
 
 	// --- 사거리: DA의 ProjectileRange (투사체 최대 비행 거리) ---
 	float ProjectileRange = 0.f;
@@ -406,36 +411,76 @@ void ABVAutobotBase::TickRangedAttack(float DeltaTime)
 	if (!Target) { ExitCombatPose(); return; }
 
 	const float DistToTarget = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
-
-	// --- 사거리 안이면 AI 이동 강제 정지 + Velocity 즉시 0 + AnimBP idle 강제 ---
 	const bool bInFireRange = (DistToTarget <= FireRange);
-	if (bInFireRange)
-	{
-		if (AAIController* AIController = Cast<AAIController>(GetController()))
-		{
-			AIController->StopMovement();
-			AIController->SetFocus(Target);
-		}
-		if (UCharacterMovementComponent* Move = GetCharacterMovement())
-		{
-			Move->StopMovementImmediately();
-		}
-		if (AnimInst) AnimInst->SetForceIdle(true);
-	}
-	else
-	{
-		// 사거리 밖: 전투 포즈 해제 → locomotion SM이 정상 작동 (걷기 모션)
-		ExitCombatPose();
-	}
 
-	// --- 발사: 쿨다운 + 사거리 안 ---
+	// --- 쿨다운/조준 윈도우 계산 ---
 	const float ShotsPerSecond = (CombatAttributes && CombatAttributes->GetAttackSpeed() > 0.f)
 		? CombatAttributes->GetAttackSpeed()
 		: 1.f;
 	const float FireInterval = 1.f / ShotsPerSecond;
 
-	if (FireCooldownTimer < FireInterval) return;
-	if (DistToTarget > FireRange) return;
+	// 조준 윈도우: 발사 직전(쿨다운 완료 근처) + 공격 몽타주 재생 중에는 정지.
+	// 몽타주가 끝나면 다음 쿨다운까지 전진 → 산개 효과.
+	const bool bReady = (FireCooldownTimer >= FireInterval);
+
+	// 공격 몽타주 재생 여부 — 미끄러짐 방지의 핵심
+	bool bAttackMontagePlaying = false;
+	if (AttackMontage)
+	{
+		if (UAnimInstance* Anim = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
+		{
+			bAttackMontagePlaying = Anim->Montage_IsPlaying(AttackMontage);
+		}
+	}
+
+	// 몽타주가 재생 중이면 사거리/쿨다운과 무관하게 무조건 정지.
+	// (미끄러짐 방지 — 몽타주가 끝난 뒤에만 전진 가능)
+	const bool bShouldHold = bAttackMontagePlaying || (bInFireRange && bReady);
+
+	if (bShouldHold)
+	{
+		// 제자리 + 타겟 바라보기.
+		// ForceIdle은 쓰지 않는다 — 공격 몽타주 슬롯 출력을 막아버리기 때문.
+		if (ABVAIController* AICtl = Cast<ABVAIController>(GetController()))
+		{
+			AICtl->StopMovement();
+			AICtl->SetFocus(Target);
+
+			// BT의 MoveTo 가 이전 프레임에 세팅된 TargetLocation 으로 계속
+			// 경로 재계산하면서 캐릭터를 끌고 가는 걸 막는다.
+			// 자기 자신 위치로 덮어쓰면 MoveTo 는 "이미 도착"으로 간주.
+			if (UBlackboardComponent* BB = AICtl->GetBlackboardComponent())
+			{
+				BB->SetValueAsVector(TEXT("TargetLocation"), GetActorLocation());
+			}
+		}
+		if (UCharacterMovementComponent* Move = GetCharacterMovement())
+		{
+			Move->StopMovementImmediately();
+			// 관성 제거 — 몽타주 재생 중에 미끄러지는 주 원인.
+			Move->Velocity = FVector::ZeroVector;
+		}
+		if (AnimInst) AnimInst->SetForceIdle(false);
+	}
+	else
+	{
+		// 쿨다운이 돌고 있는 동안에는 적 쪽으로 전진.
+		// Focus 풀고, BB의 TargetLocation을 적 위치로 밀어서 BT MoveTo가 전진시키게 한다.
+		if (ABVAIController* AICtl = Cast<ABVAIController>(GetController()))
+		{
+			AICtl->ClearFocus(EAIFocusPriority::Gameplay);
+			if (UBlackboardComponent* BB = AICtl->GetBlackboardComponent())
+			{
+				// 적 위치로 직접 이동 — perception의 hold-distance를 이 프레임에서 덮어쓴다.
+				BB->SetValueAsVector(TEXT("TargetLocation"), Target->GetActorLocation());
+			}
+		}
+		ExitCombatPose();
+	}
+
+	// --- 발사: 쿨다운 + 사거리 안 ---
+	if (!bReady) return;
+	if (!bInFireRange) return;
 
 	FireProjectile(Target);
 	FireCooldownTimer = 0.f;
@@ -567,9 +612,18 @@ void ABVAutobotBase::Attack()
 	
 	if (AnimInstance && !AnimInstance->Montage_IsPlaying(AttackMontage))
 	{
-		AnimInstance->Montage_Play(AttackMontage, GetAttackSpeed());
+		// 몽타주가 발사 주기(1/AttackSpeed초) 안에 정확히 끝나도록 재생률 산출.
+		// PlayRate = MontageLength * AttackSpeed * Multiplier
+		const float MontageLen = AttackMontage->GetPlayLength();
+		const float Atk = GetAttackSpeed();
+		const float Mult = (UnitData && UnitData->AttackMontagePlayRateMultiplier > 0.f)
+			? UnitData->AttackMontagePlayRateMultiplier : 1.f;
+		const float PlayRate = (MontageLen > KINDA_SMALL_NUMBER && Atk > 0.f)
+			? MontageLen * Atk * Mult
+			: FMath::Max(Atk * Mult, 0.1f);
+		AnimInstance->Montage_Play(AttackMontage, PlayRate);
 	}
-	
+
 }
 
 void ABVAutobotBase::Dead()
@@ -618,9 +672,12 @@ void ABVAutobotBase::Dead()
 		OverheadWidgetComponent = nullptr;
 	}
 	
-	// Destroy this object 
+	// 죽자마자 페이드 시작 → 2초 안에 사라짐
+	StartFadeOut();
+
+	// Destroy this object
 	FTimerHandle DeadTimerHandle;
-	SetLifeSpan(4.0f);
+	SetLifeSpan(2.0f);
 
 	// Death Sound
 
@@ -653,7 +710,9 @@ void ABVAutobotBase::PerformAttackHit()
 	// This function is called by anim montage notifier
 	// This function finds and validates the attack target
 	// And call GAS function to finalize the damage application
-	
+
+	if (bIsDead || !IsValid(this)) return;
+
 	ABVAIController* AIController = Cast<ABVAIController>(GetController());
 	if (!AIController)
 	{
@@ -669,22 +728,33 @@ void ABVAutobotBase::PerformAttackHit()
 	}
 
 	static const FName TargetKeyName(TEXT("AttackTargetActor"));
-	AActor* TargetActor = Cast<AActor>(BB->GetValueAsObject(TargetKeyName));
+	AActor* BBTarget = Cast<AActor>(BB->GetValueAsObject(TargetKeyName));
 
-	if (!TargetActor)
+	// 원거리: 노티파이 시점에 실제 투사체 스폰 → 몽타주와 발사 타이밍 동기화
+	if (UnitData && UnitData->WeaponData)
+	{
+		// 노티파이가 도착했으므로 폴백 타이머는 취소 (이중 스폰 방지)
+		GetWorldTimerManager().ClearTimer(FireFallbackTimerHandle);
+
+		// PendingFireTarget 이 유효할 때만 발사.
+		// 비어있다면 이미 폴백 타이머가 처리했거나 유닛이 더 이상 사격할 상태가 아닌 것이므로
+		// BBTarget 으로 폴백하지 않는다 (이중 스폰 방지).
+		AActor* FireTarget = PendingFireTarget.Get();
+		if (IsValid(FireTarget))
+		{
+			SpawnProjectileAtTarget(FireTarget);
+		}
+		PendingFireTarget.Reset();
+		return;
+	}
+
+	// 근접: BB 타겟 필수
+	if (!IsValid(BBTarget))
 	{
 		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No Target Actor!"));
 		return;
 	}
-
-	// 원거리 유닛은 애님 노티파이로 때리지 않는다. Tick 쿨다운이 FireProjectile을 호출한다.
-	if (UnitData && UnitData->WeaponData)
-	{
-		return;
-	}
-
-	// 근접: 기존 경로 유지
-	ApplyDamageToTarget(TargetActor);
+	ApplyDamageToTarget(BBTarget);
 }
 
 void ABVAutobotBase::FireProjectile(AActor* TargetActor)
@@ -694,15 +764,67 @@ void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 	UWorld* World = GetWorld();
 	if (!World) return;
 
-	// 발사할 때마다 공격 몽타주 재생 (AttackMontage가 슬롯을 덮어쓰므로 ForceIdle 상태와도 호환)
+	// 실제 스폰은 PerformAttackHit 노티파이 시점까지 미룬다.
+	// 여기서는 공격 몽타주만 재생하고 타겟을 기억해둔다.
+	PendingFireTarget = TargetActor;
+
 	if (AttackMontage)
 	{
 		if (UAnimInstance* AnimInstance = GetMesh() ? GetMesh()->GetAnimInstance() : nullptr)
 		{
+			// 몽타주가 발사 주기 안에 정확히 끝나도록 재생률 산출 (* DA 배수)
+			const float MontageLen = AttackMontage->GetPlayLength();
+			const float Atk = GetAttackSpeed();
+			const float Mult = (UnitData && UnitData->AttackMontagePlayRateMultiplier > 0.f)
+				? UnitData->AttackMontagePlayRateMultiplier : 1.f;
+			const float PlayRate = (MontageLen > KINDA_SMALL_NUMBER && Atk > 0.f)
+				? MontageLen * Atk * Mult
+				: FMath::Max(Atk * Mult, 0.1f);
 			// 발사 간격이 몽타주 길이보다 짧을 수 있으니 매번 재시작 (Montage_Play가 알아서 처리)
-			AnimInstance->Montage_Play(AttackMontage, GetAttackSpeed());
+			AnimInstance->Montage_Play(AttackMontage, PlayRate);
+
+			// 안전장치: 몽타주에 PerformAttackHit 노티파이가 배치돼 있지 않으면
+			// 노티파이가 영원히 안 온다. 몽타주 길이의 90% 시점에 폴백 스폰을 예약.
+			// 노티파이가 먼저 오면 PerformAttackHit 안에서 이 타이머를 취소한다.
+			const float FallbackDelay = (MontageLen > KINDA_SMALL_NUMBER && PlayRate > 0.f)
+				? (MontageLen / PlayRate) * 0.9f
+				: 0.3f;
+			GetWorldTimerManager().SetTimer(
+				FireFallbackTimerHandle,
+				this,
+				&ABVAutobotBase::FireFallbackSpawn,
+				FMath::Max(FallbackDelay, 0.05f),
+				false);
 		}
 	}
+	else
+	{
+		// 몽타주가 없으면 노티파이가 올 수 없으므로 즉시 스폰
+		SpawnProjectileAtTarget(TargetActor);
+		PendingFireTarget.Reset();
+	}
+}
+
+void ABVAutobotBase::FireFallbackSpawn()
+{
+	// 노티파이가 이미 처리했으면 PendingFireTarget은 비어있다.
+	if (!PendingFireTarget.IsValid()) return;
+
+	AActor* FireTarget = PendingFireTarget.Get();
+	if (IsValid(FireTarget))
+	{
+		SpawnProjectileAtTarget(FireTarget);
+	}
+	PendingFireTarget.Reset();
+}
+
+void ABVAutobotBase::SpawnProjectileAtTarget(AActor* TargetActor)
+{
+	if (!IsValid(TargetActor) || !IsValid(UnitData) || !IsValid(UnitData->WeaponData)) return;
+	if (bIsDead) return;
+
+	UWorld* World = GetWorld();
+	if (!World || !World->IsGameWorld()) return;
 
 	// --- 스폰 위치: 메시 소켓 우선, 없으면 액터 로컬 오프셋 ---
 	FVector SpawnLocation;
@@ -731,6 +853,7 @@ void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 
 	// --- Launch 속도 계산 ---
 	FVector LaunchVelocity = FVector::ZeroVector;
+	float ArcGravityScale = 1.f; // Arc 궤적에서 ProjectileSpeed에 맞춰 조정
 	if (Trajectory == EBVProjectileTrajectory::Arc)
 	{
 		const bool bArcOK = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
@@ -746,6 +869,18 @@ void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 			const FVector Direction = (TargetLocation - SpawnLocation).GetSafeNormal();
 			LaunchVelocity = Direction * ProjectileSpeed;
 			Trajectory = EBVProjectileTrajectory::Straight;
+		}
+		else
+		{
+			// CustomArc는 ArcValue + 중력만으로 속도를 결정 → ProjectileSpeed 반영 필요.
+			// 속도를 k배 스케일하고 중력을 k^2 배 스케일하면 같은 지점에 착탄한다.
+			const float NaturalSpeed = LaunchVelocity.Size();
+			if (NaturalSpeed > KINDA_SMALL_NUMBER && ProjectileSpeed > 0.f)
+			{
+				const float k = ProjectileSpeed / NaturalSpeed;
+				LaunchVelocity *= k;
+				ArcGravityScale = k * k;
+			}
 		}
 	}
 	else
@@ -779,7 +914,7 @@ void ABVAutobotBase::FireProjectile(AActor* TargetActor)
 		Projectile->FindComponentByClass<UProjectileMovementComponent>())
 	{
 		Movement->ProjectileGravityScale =
-			(Trajectory == EBVProjectileTrajectory::Straight) ? 0.f : 1.f;
+			(Trajectory == EBVProjectileTrajectory::Straight) ? 0.f : ArcGravityScale;
 	}
 
 	Projectile->SetLaunchVelocity(LaunchVelocity);

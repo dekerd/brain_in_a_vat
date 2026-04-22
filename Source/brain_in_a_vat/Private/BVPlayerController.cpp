@@ -26,7 +26,10 @@
 #include "Blueprint/WidgetLayoutLibrary.h"
 #include "Kismet/GameplayStatics.h"
 #include "Kismet/KismetRenderingLibrary.h"
+#include "Buildings/BVCityBase.h"
 #include "Widget/BVBuildingDetailWidget.h"
+#include "Widget/BVCaptureAnnouncementWidget.h"
+#include "Widget/BVCityDetailWidget.h"
 #include "Widget/BVUnitDetailWidget.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
@@ -117,6 +120,29 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 {
 	Super::PlayerTick(DeltaTime);
 
+	// --- Box selection drag tracking ---
+	if (bIsDragSelecting)
+	{
+		float MX = 0.f, MY = 0.f;
+		if (GetMousePosition(MX, MY))
+		{
+			DragCurrentScreenPos = FVector2D(MX, MY);
+
+			if (!bDragMovedBeyondThreshold)
+			{
+				if (FVector2D::Distance(DragCurrentScreenPos, DragStartScreenPos) > DragThresholdPixels)
+				{
+					bDragMovedBeyondThreshold = true;
+				}
+			}
+
+			if (bDragMovedBeyondThreshold)
+			{
+				UpdateBoxHover();
+			}
+		}
+	}
+
 	// Construction Ghost
 	if (bIsConstructionMode)
 	{
@@ -162,8 +188,17 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 	if (NewHitActor != HoveredObject)
 	{
-		// 커서가 벗어나도, '선택된 건물'은 호버 이펙트 유지
-		if (HoveredObject && HoveredObject != DetailBuilding.Get())
+		// 커서가 벗어나도, '선택된 건물' 또는 '박스셀렉션에 포함된 액터'는 호버 유지
+		auto IsBoxSelected = [this](AActor* A)
+		{
+			for (const TWeakObjectPtr<AActor>& W : BoxSelectedActors)
+			{
+				if (W.Get() == A) return true;
+			}
+			return false;
+		};
+
+		if (HoveredObject && HoveredObject != DetailBuilding.Get() && !IsBoxSelected(HoveredObject))
 		{
 			if (HoveredObject->Implements<UBVDamageableInterface>())
 			{
@@ -188,7 +223,8 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	HoveredObject = NewHitActor;
 
 	// 상세 패널이 열려 있을 때, 리스폰 프로그레스 갱신 + 건물 옆에 붙여 따라가기
-	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	// (BuildingDetailWidget 또는 CityDetailWidget 중 활성화된 쪽을 참조)
+	if (ActiveDetailWidget && ActiveDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		if (ABVBuildingBase* DetailB = DetailBuilding.Get())
 		{
@@ -198,15 +234,20 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 			}
 			else
 			{
-				// 1) 프로그레스 갱신
-				if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(BuildingDetailWidget))
+				// 1) 리스폰 프로그레스 갱신 (위젯 종류별로)
+				float Ratio = 0.f;
+				if (DetailB->RespawnInterval > 0.f && DetailB->SpawnUnitClass)
 				{
-					float Ratio = 0.f;
-					if (DetailB->RespawnInterval > 0.f && DetailB->SpawnUnitClass)
-					{
-						Ratio = FMath::Fmod(DetailB->ElapsedTime, DetailB->RespawnInterval) / DetailB->RespawnInterval;
-					}
+					Ratio = FMath::Fmod(DetailB->ElapsedTime, DetailB->RespawnInterval) / DetailB->RespawnInterval;
+				}
+
+				if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(ActiveDetailWidget))
+				{
 					DetailW->SetRespawnProgress(Ratio);
+				}
+				else if (UBVCityDetailWidget* CityW = Cast<UBVCityDetailWidget>(ActiveDetailWidget))
+				{
+					CityW->SetRespawnProgress(Ratio);
 				}
 
 				// 2) 건물 월드 위치 -> 위젯(슬레이트) 좌표 변환해 위젯 위치 갱신
@@ -216,13 +257,13 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 				{
 					// 스크린 픽셀 기준 단순 오프셋: 건물 중심에서 오른쪽으로 약간 띄우기
 					const FVector2D PanelOffset(60.f, -30.f);
-					BuildingDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
-					BuildingDetailWidget->SetVisibility(ESlateVisibility::Visible);
+					ActiveDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+					ActiveDetailWidget->SetVisibility(ESlateVisibility::Visible);
 				}
 				else
 				{
 					// 건물이 카메라 뒤/밖이면 숨김
-					BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+					ActiveDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 				}
 			}
 		}
@@ -279,13 +320,10 @@ ETeamAttitude::Type ABVPlayerController::GetTeamAttitudeTowards(const AActor& Ot
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 	FGenericTeamId OtherTeamId = OtherTeamAgent->GetGenericTeamId();
 
-	if (OtherTeamId.GetId() == 255)
-	{
-		return ETeamAttitude::Neutral;
-	}
-
+	// 중립(EBVTeam::Neutral = 255)은 거점 점령을 위해 Hostile로 취급.
+	// 같은 팀만 Friendly, 나머지(다른 팀 / 중립 / 미지정)는 모두 Hostile.
 	return (MyTeamId == OtherTeamId) ? ETeamAttitude::Friendly : ETeamAttitude::Hostile;
-	
+
 }
 
 void ABVPlayerController::SetupInputComponent()
@@ -325,8 +363,10 @@ void ABVPlayerController::SetupInputComponent()
 
 			if (SelectAction)
 			{
-				// Left Click -> Select
-				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::SelectObject);
+				// Left Click Pressed -> 드래그 시작 기록 (단일선택은 Released에서 판정)
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Started, this, &ABVPlayerController::OnSelectPressed);
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Completed, this, &ABVPlayerController::OnSelectReleased);
+				EnhancedInputComponent->BindAction(SelectAction, ETriggerEvent::Canceled, this, &ABVPlayerController::OnSelectReleased);
 			}
 
 			// [Build Mode]
@@ -629,20 +669,60 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		}
 	}
 
-	// 최초 1회만 위젯 생성
-	if (!BuildingDetailWidget && BuildingDetailWidgetClass)
+	// 거점(City)과 일반 건물은 서로 다른 디테일 위젯 사용.
+	// 단, CityDetailWidgetClass가 비어 있으면 기존 BuildingDetailWidget으로 폴백.
+	ABVCityBase* City = Cast<ABVCityBase>(InBuilding);
+	const bool bUseCityWidget = (City != nullptr) && (CityDetailWidgetClass != nullptr);
+
+	// 반대편 위젯은 숨김.
+	if (bUseCityWidget)
 	{
-		BuildingDetailWidget = CreateWidget<UUserWidget>(this, BuildingDetailWidgetClass);
-		if (BuildingDetailWidget)
-		{
-			BuildingDetailWidget->AddToViewport();
-			BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
-		}
+		if (BuildingDetailWidget) BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+	else
+	{
+		if (CityDetailWidget) CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	if (!BuildingDetailWidget) return;
+	// 필요한 쪽 위젯을 lazy-init.
+	UUserWidget* TargetWidget = nullptr;
+
+	if (bUseCityWidget)
+	{
+		if (!CityDetailWidget)
+		{
+			CityDetailWidget = CreateWidget<UUserWidget>(this, CityDetailWidgetClass);
+			if (CityDetailWidget)
+			{
+				CityDetailWidget->AddToViewport();
+				CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}
+		TargetWidget = CityDetailWidget;
+	}
+	else
+	{
+		if (!BuildingDetailWidget && BuildingDetailWidgetClass)
+		{
+			BuildingDetailWidget = CreateWidget<UUserWidget>(this, BuildingDetailWidgetClass);
+			if (BuildingDetailWidget)
+			{
+				BuildingDetailWidget->AddToViewport();
+				BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}
+		TargetWidget = BuildingDetailWidget;
+	}
+
+	if (!TargetWidget)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[ShowBuildingDetail] No detail widget available. Check BP_PlayerController's BuildingDetailWidgetClass / CityDetailWidgetClass."));
+		return;
+	}
 
 	DetailBuilding = InBuilding;
+	ActiveDetailWidget = TargetWidget;
 
 	// 선택된 건물은 호버 이펙트를 강제로 켜둔다 (커서가 벗어나도 유지)
 	if (InBuilding->Implements<UBVDamageableInterface>())
@@ -650,12 +730,25 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		IBVDamageableInterface::Execute_SetHovered(InBuilding, true);
 	}
 
-	if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(BuildingDetailWidget))
+	// 위젯 종류에 맞는 초기화 호출.
+	// 거점이라도 CityDetailWidgetClass가 없어서 BuildingDetailWidget으로 폴백한 경우
+	// SetFromBuilding로 초기화 (건물 패널이 체력을 보여주게 됨).
+	if (bUseCityWidget)
 	{
-		DetailW->SetFromBuilding(InBuilding);
+		if (UBVCityDetailWidget* DetailW = Cast<UBVCityDetailWidget>(TargetWidget))
+		{
+			DetailW->SetFromCity(City);
+		}
+	}
+	else
+	{
+		if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(TargetWidget))
+		{
+			DetailW->SetFromBuilding(InBuilding);
+		}
 	}
 
-	BuildingDetailWidget->SetVisibility(ESlateVisibility::Visible);
+	TargetWidget->SetVisibility(ESlateVisibility::Visible);
 
 	// 오픈 즉시 한 번 위치를 잡아둠 (다음 틱부터 PlayerTick에서 이어서 갱신)
 	FVector2D WidgetPos;
@@ -663,7 +756,7 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 			this, InBuilding->GetActorLocation(), WidgetPos, false))
 	{
 		const FVector2D PanelOffset(60.f, -30.f);
-		BuildingDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+		TargetWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
 	}
 }
 
@@ -679,11 +772,68 @@ void ABVPlayerController::HideBuildingDetail()
 	}
 
 	DetailBuilding = nullptr;
+	ActiveDetailWidget = nullptr;
 
 	if (BuildingDetailWidget && BuildingDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
+	if (CityDetailWidget && CityDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+	}
+}
+
+void ABVPlayerController::ShowCaptureAnnouncement(const FText& Message)
+{
+	if (!CaptureAnnouncementWidgetClass)
+	{
+		UE_LOG(LogTemp, Warning,
+			TEXT("[ShowCaptureAnnouncement] CaptureAnnouncementWidgetClass not set on PlayerController."));
+		return;
+	}
+
+	// Lazy-init.
+	if (!CaptureAnnouncementWidget)
+	{
+		CaptureAnnouncementWidget = CreateWidget<UUserWidget>(this, CaptureAnnouncementWidgetClass);
+		if (CaptureAnnouncementWidget)
+		{
+			// ZOrder 높게 해서 다른 UI 위에 표시.
+			CaptureAnnouncementWidget->AddToViewport(100);
+		}
+	}
+
+	if (!CaptureAnnouncementWidget) return;
+
+	// 메시지 설정 + 표시.
+	if (UBVCaptureAnnouncementWidget* AnnounceW = Cast<UBVCaptureAnnouncementWidget>(CaptureAnnouncementWidget))
+	{
+		AnnounceW->SetMessage(Message);
+	}
+	CaptureAnnouncementWidget->SetVisibility(ESlateVisibility::HitTestInvisible);
+
+	// 이미 띄워진 경우 타이머 리셋(최신 메시지 기준으로 3초 유지).
+	GetWorldTimerManager().ClearTimer(CaptureAnnouncementHideTimerHandle);
+	GetWorldTimerManager().SetTimer(
+		CaptureAnnouncementHideTimerHandle,
+		FTimerDelegate::CreateWeakLambda(this, [this]()
+		{
+			if (!CaptureAnnouncementWidget) return;
+
+			// 페이드 아웃 애니메이션 재생. 애니메이션 종료 시점에 위젯이 자동으로 Hidden 처리.
+			// (애니메이션 없으면 PlayFadeOut이 즉시 Hidden 처리)
+			if (UBVCaptureAnnouncementWidget* AnnounceW = Cast<UBVCaptureAnnouncementWidget>(CaptureAnnouncementWidget))
+			{
+				AnnounceW->PlayFadeOut();
+			}
+			else
+			{
+				CaptureAnnouncementWidget->SetVisibility(ESlateVisibility::Hidden);
+			}
+		}),
+		CaptureAnnouncementDuration,
+		false);
 }
 
 void ABVPlayerController::ShowUnitDetail(ABVAutobotBase* InUnit)
@@ -1231,11 +1381,177 @@ void ABVPlayerController::CloseShopUI()
 {
 	if (ShopWidget && ShopWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
-		ShopWidget->SetVisibility(ESlateVisibility::Hidden); 
-		
+		ShopWidget->SetVisibility(ESlateVisibility::Hidden);
+
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
 		SetInputMode(InputMode);
 	}
+}
+
+// ======================= Box Selection =======================
+
+void ABVPlayerController::OnSelectPressed()
+{
+	// 기존 박스 셀렉션 먼저 해제
+	ClearBoxSelection();
+
+	bIsDragSelecting = true;
+	bDragMovedBeyondThreshold = false;
+
+	float MX = 0.f, MY = 0.f;
+	if (GetMousePosition(MX, MY))
+	{
+		DragStartScreenPos = FVector2D(MX, MY);
+		DragCurrentScreenPos = DragStartScreenPos;
+	}
+}
+
+void ABVPlayerController::OnSelectReleased()
+{
+	const bool bWasDrag = bIsDragSelecting && bDragMovedBeyondThreshold;
+
+	bIsDragSelecting = false;
+	bDragMovedBeyondThreshold = false;
+
+	if (bWasDrag)
+	{
+		// 박스 셀렉션에 정확히 1개만 걸렸으면 해당 상세 패널 표시
+		if (BoxSelectedActors.Num() == 1)
+		{
+			AActor* OnlyActor = BoxSelectedActors[0].Get();
+			if (ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OnlyActor))
+			{
+				HideBuildingDetail();
+				ShowUnitDetail(Unit);
+			}
+			else if (ABVBuildingBase* Building = Cast<ABVBuildingBase>(OnlyActor))
+			{
+				HideUnitDetail();
+				ShowBuildingDetail(Building);
+			}
+		}
+		else
+		{
+			// 여러 개 선택 → 기존 상세 패널 닫기
+			HideBuildingDetail();
+			HideUnitDetail();
+		}
+		return;
+	}
+
+	// 짧은 클릭 → 기존 단일 셀렉트 동작
+	SelectObject();
+}
+
+void ABVPlayerController::UpdateBoxHover()
+{
+	// 박스 사각형 계산 (스크린 좌표)
+	const FVector2D Min(FMath::Min(DragStartScreenPos.X, DragCurrentScreenPos.X),
+	                    FMath::Min(DragStartScreenPos.Y, DragCurrentScreenPos.Y));
+	const FVector2D Max(FMath::Max(DragStartScreenPos.X, DragCurrentScreenPos.X),
+	                    FMath::Max(DragStartScreenPos.Y, DragCurrentScreenPos.Y));
+
+	// 현재 박스 내부에 있는 액터 수집 (유닛 + 건물)
+	TArray<TWeakObjectPtr<AActor>> NewSet;
+
+	const FGenericTeamId MyTeamId = GetGenericTeamId();
+
+	auto TestAndAdd = [&](AActor* A)
+	{
+		if (!A) return;
+		if (!A->Implements<UBVDamageableInterface>()) return;
+
+		// 죽은 유닛 / 파괴된 건물 제외
+		if (IBVDamageableInterface::Execute_IsDestroyed(A)) return;
+		if (ABVAutobotBase* Bot = Cast<ABVAutobotBase>(A))
+		{
+			if (Bot->bIsDead) return;
+		}
+
+		// 아군만 선택 — 팀이 없거나(NoTeam) 다른 팀이면 제외
+		if (const IGenericTeamAgentInterface* TeamAgent = Cast<IGenericTeamAgentInterface>(A))
+		{
+			const FGenericTeamId OtherId = TeamAgent->GetGenericTeamId();
+			if (OtherId == FGenericTeamId::NoTeam) return;
+			if (OtherId != MyTeamId) return;
+		}
+		else
+		{
+			return;
+		}
+
+		FVector2D Screen;
+		if (!ProjectWorldLocationToScreen(A->GetActorLocation(), Screen)) return;
+		if (Screen.X < Min.X || Screen.X > Max.X) return;
+		if (Screen.Y < Min.Y || Screen.Y > Max.Y) return;
+
+		NewSet.Emplace(A);
+	};
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	for (TActorIterator<ABVAutobotBase> It(World); It; ++It)
+	{
+		TestAndAdd(*It);
+	}
+	for (TActorIterator<ABVBuildingBase> It(World); It; ++It)
+	{
+		TestAndAdd(*It);
+	}
+
+	// 이전 박스에 있었지만 이번엔 빠진 액터 → un-hover
+	for (const TWeakObjectPtr<AActor>& Old : BoxSelectedActors)
+	{
+		AActor* OldActor = Old.Get();
+		if (!OldActor) continue;
+
+		bool bStillIn = false;
+		for (const TWeakObjectPtr<AActor>& N : NewSet)
+		{
+			if (N.Get() == OldActor) { bStillIn = true; break; }
+		}
+		if (!bStillIn)
+		{
+			if (OldActor != HoveredObject && OldActor != DetailBuilding.Get())
+			{
+				if (OldActor->Implements<UBVDamageableInterface>())
+				{
+					IBVDamageableInterface::Execute_SetHovered(OldActor, false);
+				}
+			}
+		}
+	}
+
+	// 이번 박스에 들어온 액터 → hover ON
+	for (const TWeakObjectPtr<AActor>& N : NewSet)
+	{
+		if (AActor* A = N.Get())
+		{
+			if (A->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(A, true);
+			}
+		}
+	}
+
+	BoxSelectedActors = NewSet;
+}
+
+void ABVPlayerController::ClearBoxSelection()
+{
+	for (const TWeakObjectPtr<AActor>& W : BoxSelectedActors)
+	{
+		AActor* A = W.Get();
+		if (!A) continue;
+		if (A == HoveredObject) continue;
+		if (A == DetailBuilding.Get()) continue;
+		if (A->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(A, false);
+		}
+	}
+	BoxSelectedActors.Reset();
 }

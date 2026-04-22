@@ -23,8 +23,18 @@
 #include "Item/BVItemData.h"
 #include "Kismet/GameplayStatics.h"
 #include "Data/BVProjectileData.h"
+#include "Data/BVPlayerData.h"
 #include "Weapons/Projectiles/BVProjectileBase.h"
 #include "GameFramework/ProjectileMovementComponent.h"
+#include "AbilitySystemComponent.h"
+#include "GAS/CombatAttributeSet.h"
+#include "Components/BVHealthComponent.h"
+#include "Perception/AIPerceptionStimuliSourceComponent.h"
+#include "Perception/AISense_Sight.h"
+#include "Perception/AISense_Damage.h"
+#include "Components/WidgetComponent.h"
+#include "Widget/BVUnitOverheadWidget.h"
+#include "Blueprint/UserWidget.h"
 
 // Sets default values
 AMainCharacter::AMainCharacter()
@@ -32,14 +42,9 @@ AMainCharacter::AMainCharacter()
  	// Set this character to call Tick() every frame.  You can turn this off to improve performance if you don't need it.
 	PrimaryActorTick.bCanEverTick = true;
 
-	// Capsule
+	// Capsule — PlayerCharacter 프리셋 (Player 타입, Unit/Building Block, Projectile/Item Overlap 등)
 	GetCapsuleComponent()->InitCapsuleSize(42.f, 96.f);
-	GetCapsuleComponent()->SetCollisionProfileName(TEXT("Pawn"));
-	GetCapsuleComponent()->SetCollisionObjectType(ECC_Player);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Pawn, ECR_Overlap); // If Unit is a pawn
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Building, ECR_Overlap);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_Projectile, ECR_Ignore);
-	GetCapsuleComponent()->SetCollisionResponseToChannel(ECC_WorldStatic, ECR_Block); // Bloacked by scene components
+	GetCapsuleComponent()->SetCollisionProfileName(TEXT("PlayerCharacter"));
 	GetCapsuleComponent()->SetNotifyRigidBodyCollision(true); // For OnHit
 
 	// Movement
@@ -111,7 +116,34 @@ AMainCharacter::AMainCharacter()
 
 	// Weapon Cooltime
 	// WeaponCoolTime.Init(0.0f, 5);
-	
+
+	// --- GAS ---
+	ASC = CreateDefaultSubobject<UAbilitySystemComponent>(TEXT("AbilitySystemComponent"));
+	ASC->SetIsReplicated(false);
+	CombatAttributes = CreateDefaultSubobject<UCombatAttributeSet>(TEXT("CombatAttributes"));
+
+	// --- Health component ---
+	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
+
+	// --- AI Perception Stimuli (적이 시야로 감지) ---
+	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSource"));
+	StimuliSourceComponent->bAutoRegister = true;
+	StimuliSourceComponent->RegisterForSense(UAISense_Sight::StaticClass());
+	StimuliSourceComponent->RegisterForSense(UAISense_Damage::StaticClass());
+
+	// --- Overhead Health Bar ---
+	OverheadWidgetComponent = CreateDefaultSubobject<UWidgetComponent>(TEXT("OverheadWidgetComponent"));
+	OverheadWidgetComponent->SetupAttachment(RootComponent);
+	OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+	OverheadWidgetComponent->SetDrawSize(FVector2D(150.f, 20.f));
+	OverheadWidgetComponent->SetRelativeScale3D(FVector(0.5f, 0.5f, 0.5f));
+	OverheadWidgetComponent->SetUsingAbsoluteRotation(true);
+	OverheadWidgetComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+}
+
+UAbilitySystemComponent* AMainCharacter::GetAbilitySystemComponent() const
+{
+	return ASC;
 }
 
 // Called when the game starts or when spawned
@@ -124,8 +156,127 @@ void AMainCharacter::BeginPlay()
 		VisionSphere->SetSphereRadius(VisionRadius);
 		VisionSphere->OnComponentBeginOverlap.AddDynamic(this, &AMainCharacter::OnVisionRadiusBeginOverlap);
 		VisionSphere->OnComponentEndOverlap.AddDynamic(this, &AMainCharacter::OnVisionRadiusEndOverlap);
+
+		// 바인딩 이전에 이미 겹쳐 있던 액터들(주로 레벨 배치 건물)은 초기 BeginOverlap
+		// 이벤트를 놓치므로 여기서 수동으로 처리.
+		TArray<AActor*> AlreadyOverlapping;
+		VisionSphere->GetOverlappingActors(AlreadyOverlapping);
+		for (AActor* Actor : AlreadyOverlapping)
+		{
+			if (Actor && Actor != this)
+			{
+				OnVisionRadiusBeginOverlap(VisionSphere, Actor, nullptr, 0, false, FHitResult());
+			}
+		}
 	}
-	
+
+	// --- GAS 초기화 ---
+	if (ASC)
+	{
+		ASC->InitAbilityActorInfo(this, this);
+	}
+
+	// --- PlayerData 스탯 주입 ---
+	ApplyInitStatFromDataAsset();
+
+	// --- HealthComponent 바인딩 ---
+	if (HealthComponent)
+	{
+		HealthComponent->InitFromGAS(ASC, CombatAttributes);
+	}
+
+	// --- Overhead Health Bar Widget ---
+	if (OverheadWidgetComponent && PlayerData && PlayerData->OverheadWidgetClass)
+	{
+		OverheadWidgetComponent->SetWidgetClass(PlayerData->OverheadWidgetClass);
+		OverheadWidgetComponent->InitWidget();
+
+		OverheadWidgetComponent->SetWidgetSpace(EWidgetSpace::World);
+		OverheadWidgetComponent->SetUsingAbsoluteRotation(true);
+		OverheadWidgetComponent->SetWorldRotation(FRotator(65.f, 180.f, 0.f));
+
+		// 캡슐 머리 위로 위치 보정
+		const float TopZ = GetCapsuleComponent()
+			? GetActorLocation().Z + GetCapsuleComponent()->GetScaledCapsuleHalfHeight() + 30.f
+			: GetActorLocation().Z + 120.f;
+		FVector WidgetLoc = GetActorLocation();
+		WidgetLoc.Z = TopZ;
+		OverheadWidgetComponent->SetWorldLocation(WidgetLoc);
+		OverheadWidgetComponent->SetPivot(FVector2D(0.5f, 1.0f));
+
+		if (UUserWidget* UserWidget = OverheadWidgetComponent->GetUserWidgetObject())
+		{
+			if (UBVUnitOverheadWidget* OverheadWidget = Cast<UBVUnitOverheadWidget>(UserWidget))
+			{
+				OverheadWidget->InitWithHealthComponent(HealthComponent);
+			}
+		}
+	}
+}
+
+void AMainCharacter::ApplyInitStatFromDataAsset()
+{
+	if (!ASC || !CombatAttributes)
+	{
+		UE_LOG(LogTemp, Error, TEXT("[MainCharacter::ApplyInitStat] ASC or CombatAttributes NULL"));
+		return;
+	}
+
+	// PlayerData가 없으면 클래스 기본값으로 폴백
+	const float MaxHP   = PlayerData ? PlayerData->MaxHealth     : 500.f;
+	const float HPRegen = PlayerData ? PlayerData->HealthRegen   : 0.f;
+	const float MaxMP   = PlayerData ? PlayerData->MaxMana       : 100.f;
+	const float MPRegen = PlayerData ? PlayerData->ManaRegen     : 0.f;
+	const float Dmg     = PlayerData ? PlayerData->Damage        : 20.f;
+	const float Def     = PlayerData ? PlayerData->Defense       : 5.f;
+	const float AS      = PlayerData ? PlayerData->AttackSpeed   : 1.f;
+	const float AR      = PlayerData ? PlayerData->AttackRange   : 1500.f;
+	const float MS      = PlayerData ? PlayerData->MovementSpeed : 600.f;
+
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMaxHealthAttribute(),     MaxHP);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetHealthAttribute(),        MaxHP);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetHealthRegenAttribute(),   HPRegen);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMaxManaAttribute(),       MaxMP);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetManaAttribute(),          MaxMP);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetManaRegenAttribute(),     MPRegen);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetDamageAttribute(),        Dmg);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetDefenseAttribute(),       Def);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAttackSpeedAttribute(),   AS);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAttackRangeAttribute(),   AR);
+	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMovementSpeedAttribute(), MS);
+
+	if (GetCharacterMovement())
+	{
+		GetCharacterMovement()->MaxWalkSpeed = MS;
+	}
+
+	UE_LOG(LogTemp, Warning,
+		TEXT("[MainCharacter::InitStat] MaxHP=%.1f Dmg=%.1f Def=%.1f MS=%.1f"),
+		MaxHP, Dmg, Def, MS);
+}
+
+void AMainCharacter::HandleDeath()
+{
+	if (bIsDead) return;
+	bIsDead = true;
+
+	UE_LOG(LogTemp, Warning, TEXT("[MainCharacter] %s DIED"), *GetName());
+
+	// 입력 / 이동 차단
+	if (APlayerController* PC = Cast<APlayerController>(GetController()))
+	{
+		DisableInput(PC);
+	}
+	if (UCharacterMovementComponent* MoveComp = GetCharacterMovement())
+	{
+		MoveComp->StopMovementImmediately();
+		MoveComp->DisableMovement();
+	}
+	// 콜리전 off
+	if (UCapsuleComponent* Caps = GetCapsuleComponent())
+	{
+		Caps->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	}
 }
 
 // Called every frame
@@ -140,7 +291,7 @@ void AMainCharacter::Tick(float DeltaTime)
 bool AMainCharacter::EquipItem(class UBVItemData* ItemToEquip)
 {
 	if (!ItemToEquip || EquippedWeapons.Num() >= MAX_EQUIP_ITEM) return false;
-	
+
 	if (InventoryItems.Contains(ItemToEquip))
 	{
 		InventoryItems.RemoveSingle(ItemToEquip);
@@ -194,7 +345,7 @@ bool AMainCharacter::AddItemToInventory(class UBVItemData* ItemData)
 void AMainCharacter::OnVisionRadiusBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
                                                UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	
+
 	if (!OtherActor || OtherActor == this) return;
 
 	const IGenericTeamAgentInterface* TargetTeamAgent = Cast<IGenericTeamAgentInterface>(OtherActor);
@@ -203,7 +354,8 @@ void AMainCharacter::OnVisionRadiusBeginOverlap(UPrimitiveComponent* OverlappedC
 	FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
 	FGenericTeamId MyTeamId = GetGenericTeamId();
 
-	if (OtherTeamId != FGenericTeamId::NoTeam && OtherTeamId != MyTeamId)
+	// 같은 팀이 아니면 전부 적대 대상(중립 거점 포함).
+	if (OtherTeamId != MyTeamId)
 	{
 		EnemiesInRange.AddUnique(OtherActor);
 	}
@@ -257,8 +409,9 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 
 	AActor* Target = FindNearestEnemyInRange();
 	UE_LOG(LogTemp, Warning,
-		TEXT("[FireWeapons] idx=%d Cool=%.2f/%.2f Global=%.2f/%.2f EnemiesInRange=%d Target=%s"),
-		WeaponIndex, WeaponCoolTime[WeaponIndex], PData->FireInterval,
+		TEXT("[FireWeapons] idx=%d (%s @%p) Slots=%d Cool=%.2f/%.2f Global=%.2f/%.2f EnemiesInRange=%d Target=%s"),
+		WeaponIndex, *Weapon->GetName(), Weapon, EquippedWeapons.Num(),
+		WeaponCoolTime[WeaponIndex], PData->FireInterval,
 		GlobalFireTimer, MinFireInterval, EnemiesInRange.Num(),
 		Target ? *Target->GetName() : TEXT("NULL"));
 
@@ -314,6 +467,7 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 
 	// --- Launch 속도 계산 ---
 	FVector LaunchVelocity = FVector::ZeroVector;
+	float ArcGravityScale = 1.f; // Arc 궤적에서 ProjectileSpeed에 맞춰 조정
 	if (Trajectory == EBVProjectileTrajectory::Arc)
 	{
 		const bool bArcOK = UGameplayStatics::SuggestProjectileVelocity_CustomArc(
@@ -330,6 +484,19 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 			const FVector Direction = (TargetLocation - SpawnLocation).GetSafeNormal();
 			LaunchVelocity = Direction * ProjectileSpeed;
 			Trajectory = EBVProjectileTrajectory::Straight;
+		}
+		else
+		{
+			// CustomArc는 ArcValue와 중력만으로 속도를 결정하므로 ProjectileSpeed가 무시된다.
+			// 자연 속도를 ProjectileSpeed에 맞춰 스케일하고, 같은 착지점을 유지하려면
+			// 중력을 k^2 배로 스케일해야 포물선 모양이 보존된다 (시간이 1/k 로 줄어듦).
+			const float NaturalSpeed = LaunchVelocity.Size();
+			if (NaturalSpeed > KINDA_SMALL_NUMBER && ProjectileSpeed > 0.f)
+			{
+				const float k = ProjectileSpeed / NaturalSpeed;
+				LaunchVelocity *= k;
+				ArcGravityScale = k * k;
+			}
 		}
 	}
 	else
@@ -357,7 +524,7 @@ void AMainCharacter::FireDefaultMissile(UBVItemData* ItemData, AActor* Target)
 		Projectile->FindComponentByClass<UProjectileMovementComponent>())
 	{
 		Movement->ProjectileGravityScale =
-			(Trajectory == EBVProjectileTrajectory::Straight) ? 0.f : 1.f;
+			(Trajectory == EBVProjectileTrajectory::Straight) ? 0.f : ArcGravityScale;
 	}
 
 	Projectile->SetLaunchVelocity(LaunchVelocity);

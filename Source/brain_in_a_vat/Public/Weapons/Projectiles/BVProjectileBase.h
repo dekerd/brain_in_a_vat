@@ -75,8 +75,9 @@ protected:
 	TObjectPtr<class UParticleSystem> HitEffect;
 
 	// Niagara 우선, Cascade 폴백으로 HitEffect를 재생하는 헬퍼.
-	// HitActor가 있으면 충돌 지점과 대상 중심 사이(70%)로 이펙트 위치를 보정한다.
-	void SpawnHitVFX(AActor* HitActor = nullptr);
+	// HitActor가 있으면 타겟 콜리전 표면 위에 이펙트를 배치.
+	// SurfaceHit이 유효하면 그 ImpactPoint를 우선 사용(큰 타겟 내부 파고들기 대응).
+	void SpawnHitVFX(AActor* HitActor = nullptr, const FHitResult* SurfaceHit = nullptr);
 
 // GAS
 public:
@@ -110,4 +111,7 @@ protected:
 
 	// 0 이하면 거리 제한 없음 (Lifespan으로만 소멸)
 	float MaxTravelDistance = 0.f;
+
+	// ApplyDataAsset 중복 실행 방지 플래그. (Trail 이중 스폰 방지)
+	bool bDataAssetApplied = false;
 };
