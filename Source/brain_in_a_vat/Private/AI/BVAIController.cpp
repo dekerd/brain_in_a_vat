@@ -105,8 +105,6 @@ void ABVAIController::OnPossess(APawn* InPawn)
 
 	if (ABVAutobotBase* Autobot = Cast<ABVAutobotBase>(InPawn))
 	{
-
-		UE_LOG(LogTemp, Warning, TEXT("Autobot의 레인 할당 상태: %s"), Autobot->AssignedLane ? TEXT("성공!") : TEXT("실패(NULL)"));
 		if (Autobot->AssignedLane)
 		{
 			AssignedLane = Autobot->AssignedLane;
@@ -133,8 +131,22 @@ void ABVAIController::OnPossess(APawn* InPawn)
 		}
 	}
 
-	// 레인 없는 유닛: 기존 TargetBuilding 태그 방식
+	// 레인 없는 유닛: City 게리슨이면 RallyDestination, 아니면 기존 TargetBuilding 태그 방식.
 	MoveTarget = nullptr;
+
+	if (ABVAutobotBase* AutoPawn = Cast<ABVAutobotBase>(InPawn))
+	{
+		if (AutoPawn->bHasRallyDestination)
+		{
+			// City 게리슨 유닛 — 도시 내 rally point으로 이동 후 거기서 정지.
+			if (BlackboardComponent)
+			{
+				BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), AutoPawn->RallyDestination);
+			}
+			return;
+		}
+	}
+
 	for (TActorIterator<AActor> It(GetWorld()); It; ++It)
 	{
 		if (It->ActorHasTag("TargetBuilding"))
@@ -142,11 +154,6 @@ void ABVAIController::OnPossess(APawn* InPawn)
 			MoveTarget = *It;
 			break;
 		}
-	}
-
-	if (!MoveTarget)
-	{
-		UE_LOG(LogTemp, Warning, TEXT("No Target Cube found"))
 	}
 
 	if (BlackboardComponent)
@@ -287,7 +294,6 @@ void ABVAIController::BeginPlay()
 
 	if (AIPerception)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("AIPerception in operation"))
 		AIPerception->OnPerceptionUpdated.AddDynamic(this, &ABVAIController::OnPerceptionUpdated);
 	}
 
@@ -344,7 +350,6 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 	{
 		BlackboardComponent->SetValueAsObject(TEXT("AttackTargetActor"), ClosestTarget);
 		BlackboardComponent->SetValueAsBool(TEXT("bIsAttacking"), true);
-		UE_LOG(LogTemp, Warning, TEXT("[%s] tries to attack [%s]."), *ControllingPawn->GetName(), *ClosestTarget->GetName())
 
 		// 레인 전투 현장 보고: 플레이어 팀이 관여된 교전만 기록(아군 공격 or 아군 피격)
 		if (UWorld* World = GetWorld())
@@ -353,7 +358,6 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 			{
 				const FVector CombatMid = (ControllingPawn->GetActorLocation() + ClosestTarget->GetActorLocation()) * 0.5f;
 				PC->ReportCombatLocation(CombatMid);
-				UE_LOG(LogTemp, Warning, TEXT("[Camera] ReportCombatLocation from AI: %s"), *CombatMid.ToString());
 			}
 		}
 
@@ -392,6 +396,12 @@ void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 		{
 			// 레인 유닛: 합류 전이면 수선의 발, 합류 후면 적 베이스로 이동
 			SetTargetLocationFromLaneState(ControllingPawn);
+		}
+		else if (ABVAutobotBase* AutoPawn = Cast<ABVAutobotBase>(ControllingPawn);
+			AutoPawn && AutoPawn->bHasRallyDestination)
+		{
+			// 게리슨 유닛: 전투 종료 후 rally point로 복귀.
+			BlackboardComponent->SetValueAsVector(TEXT("TargetLocation"), AutoPawn->RallyDestination);
 		}
 		else if (IsValid(MoveTarget))
 		{

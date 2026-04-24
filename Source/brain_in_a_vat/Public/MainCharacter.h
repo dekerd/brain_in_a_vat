@@ -49,11 +49,16 @@ public:
 	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
 	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamType = (EBVTeam)NewTeamID.GetId(); }
 
-// Damageable Interface (hover는 no-op)
+// Damageable Interface
 public:
 	virtual FGenericTeamId GetTeamId_Implementation() const override { return GetGenericTeamId(); }
 	virtual bool IsDestroyed_Implementation() const override { return bIsDead; }
-	virtual void SetHovered_Implementation(bool bInHovered) override {}
+	virtual void SetHovered_Implementation(bool bInHovered) override;
+
+// Hover/Selection ring
+public:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Hover")
+	TObjectPtr<class UBVStaticHoverRingComponent> StaticHoverRingComponent;
 
 // GAS / Stats
 public:

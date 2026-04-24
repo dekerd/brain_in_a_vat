@@ -13,6 +13,7 @@
 class UWidgetComponent;
 class UBVHealthComponent;
 class ABVLane;
+class ABVCityBase;
 class UBVUnitData;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnAttackFinished, AAIController*, AIController);
@@ -157,6 +158,40 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Lane", meta = (ExposeOnSpawn = "true"))
 	TObjectPtr<ABVLane> AssignedLane;
+
+	// ─── Rally Destination (도시 게리슨용) ──────────────────────
+	// City에서 스폰된 유닛이 모일 도시 내 한 지점 (월드 좌표).
+	// AssignedLane이 없을 때 AI가 BB의 TargetLocation으로 사용.
+	// 도시가 RallyPoint를 옮기면 SetRallyDestination을 다시 호출해 재이동시킬 수 있음.
+	UPROPERTY(BlueprintReadOnly, Category = "Garrison", meta = (ExposeOnSpawn = "true"))
+	bool bHasRallyDestination = false;
+
+	UPROPERTY(BlueprintReadOnly, Category = "Garrison", meta = (ExposeOnSpawn = "true"))
+	FVector RallyDestination = FVector::ZeroVector;
+
+	// 게리슨 재집결 갱신용. BB의 TargetLocation을 즉시 새 지점으로 덮어쓰고 MoveTo 재발행.
+	UFUNCTION(BlueprintCallable, Category = "Garrison")
+	void SetRallyDestination(const FVector& NewRallyPoint);
+
+	// ─── Dispatch (도시→도시 출격) ────────────────────────────
+	// City가 Dispatch()로 출격시킬 때 채워주는 목적지 도시.
+	// 도착 시 해당 도시 게리슨에 자기 자신을 등록하는 데 사용된다.
+	// 출격 중이 아닐 때는 nullptr.
+	UPROPERTY(BlueprintReadOnly, Category = "Garrison", meta = (HideInDetailPanel))
+	TWeakObjectPtr<ABVCityBase> DispatchedToCity;
+
+protected:
+	// 도착 폴링 누적 타이머 (매 프레임이 아니라 일정 간격으로만 체크해 부하를 줄임).
+	float DispatchArrivalCheckTimer = 0.f;
+
+	// 도착 폴링 간격 (초). 이 간격마다 DispatchedToCity 도착 판정 1회.
+	UPROPERTY(EditDefaultsOnly, Category = "Garrison", meta = (ClampMin = "0.05"))
+	float DispatchArrivalCheckInterval = 0.25f;
+
+	// DispatchedToCity가 유효하면 도착 판정 + 합류 시도. Tick에서 폴링 간격으로 호출.
+	void TickDispatchArrival(float DeltaTime);
+
+public:
 	
 // Animations
 public:

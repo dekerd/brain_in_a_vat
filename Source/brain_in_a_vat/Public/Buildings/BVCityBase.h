@@ -8,10 +8,19 @@
 
 class UBVCityData;
 class ABVLane;
+class ABVAutobotBase;
 class UNiagaraComponent;
 class UNiagaraSystem;
+class UDecalComponent;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
 
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCaptureProgressChanged, float, NewProgress);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnCityDiscovered, ABVCityBase*, City);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRallyPointChanged, FVector, NewRallyPoint);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGarrisonChanged, int32, NewGarrisonCount);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDispatchTargetChanged, ABVCityBase*, NewTargetCity);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDispatchFired, ABVCityBase*, FromCity, ABVCityBase*, ToCity);
 
 /**
  * 점령 가능한 거점(도시).
@@ -37,6 +46,123 @@ public:
 	// 위젯 쪽에서 바인딩해 색/길이 갱신.
 	UPROPERTY(BlueprintAssignable, Category = "City|Capture")
 	FOnCaptureProgressChanged OnCaptureProgressChanged;
+
+	// ─── Discovery (안개 시야로 처음 발견됐는지) ──────────────
+	// 처음 발견될 때만 공지/델리게이트 발사. true 이후엔 다시 false로 안 돌아감.
+	UPROPERTY(BlueprintReadOnly, Category = "City|Discovery", meta = (HideInDetailPanel))
+	bool bDiscoveredByPlayer = false;
+
+	// 시작부터 발견된 상태로 둘 도시 (플레이어 본진 등). 공지는 안 띄움.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Discovery")
+	bool bStartDiscovered = false;
+
+	// 처음 발견될 때 1회 브로드캐스트. UI 패널의 "알려진 거점 리스트"가 바인딩.
+	UPROPERTY(BlueprintAssignable, Category = "City|Discovery")
+	FOnCityDiscovered OnCityDiscovered;
+
+	// 한 번만 효과 발생(공지 + 델리게이트). 중복 호출은 no-op이라 호출 측에서 가드 불필요.
+	void MarkDiscoveredByPlayer();
+
+	// ─── Build / Garrison (DA 미러) ────────────────────────
+	UPROPERTY(BlueprintReadOnly, Category = "City|Build", meta = (HideInDetailPanel))
+	float BuildRadius = 1500.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "City|Build")
+	TArray<TSubclassOf<ABVBuildingBase>> BuildableBuildings;
+
+	UPROPERTY(BlueprintReadOnly, Category = "City|Garrison", meta = (HideInDetailPanel))
+	int32 MaxGarrison = 20;
+
+	UPROPERTY(BlueprintReadOnly, Category = "City|Garrison", meta = (HideInDetailPanel))
+	int32 DispatchThreshold = 5;
+
+	// 빌드 모드 진입/종료 시 PlayerController가 호출. 반경 데칼만 토글.
+	void SetBuildRadiusVisualVisible(bool bVisible);
+
+	// 도시 중심에서 BuildRadius 안에 들어오는지 (XY 평면 기준).
+	UFUNCTION(BlueprintPure, Category = "City|Build")
+	bool IsLocationWithinBuildRadius(const FVector& WorldLoc) const;
+
+	// ─── Rally Point ──────────────────────────────────────────
+	// 게리슨 유닛이 모일 도시 내 한 지점(월드 좌표). BeginPlay에서 도시 액터 위치로 초기화.
+	// 항상 BuildRadius 안에 있어야 함 — SetRallyPoint가 클램프 처리.
+	UPROPERTY(BlueprintReadOnly, Category = "City|Garrison", meta = (HideInDetailPanel))
+	FVector RallyPoint = FVector::ZeroVector;
+
+	// RallyPoint 변경 시(UI 패널이 위치를 옮길 때 등) 1회 브로드캐스트.
+	UPROPERTY(BlueprintAssignable, Category = "City|Garrison")
+	FOnRallyPointChanged OnRallyPointChanged;
+
+	// RallyPoint를 새 좌표로 갱신. BuildRadius 밖이면 도시 중심에서 반경 경계로 클램프.
+	// 변경되면 이미 게리슨에 있는 살아있는 유닛 전부에게 SetRallyDestination(NewPoint)을 호출해 재집결시킴.
+	// 반환: 실제로 적용된(클램프된) 좌표.
+	UFUNCTION(BlueprintCallable, Category = "City|Garrison")
+	FVector SetRallyPoint(const FVector& NewWorldLoc);
+
+	// ─── Garrison Pool ────────────────────────────────────────
+	// 이 도시에서 스폰돼 도시에 귀속된 유닛 목록. 죽거나 만료된 약참조는 lazy prune.
+	// 외부에서 직접 변형하지 말고 Add/Remove API 사용 권장.
+	// (TArray<TWeakObjectPtr<>> 는 BP 노출 불가 — UPROPERTY는 GC 추적용으로만 유지, 접근은 BP API로.)
+	UPROPERTY()
+	TArray<TWeakObjectPtr<ABVAutobotBase>> Garrison;
+
+	// 게리슨 인원수 변경 시 브로드캐스트 (UI 카운터 바인딩용).
+	UPROPERTY(BlueprintAssignable, Category = "City|Garrison")
+	FOnGarrisonChanged OnGarrisonChanged;
+
+	// 살아있는 게리슨 인원수 (죽은/만료된 항목은 prune 후 카운트).
+	UFUNCTION(BlueprintPure, Category = "City|Garrison")
+	int32 GetGarrisonCount();
+
+	// MaxGarrison 도달 여부 — 생산 일시정지 판정에 사용.
+	UFUNCTION(BlueprintPure, Category = "City|Garrison")
+	bool IsGarrisonFull() { return GetGarrisonCount() >= MaxGarrison; }
+
+	// 외부에서(예: 도시간 이동 후 도착한 분견대) 게리슨 등록할 때 호출.
+	// 반환값:
+	//   true  = 등록됨 (혹은 이미 등록되어 있었음 — 멱등 처리)
+	//   false = 거부됨 (Unit nullptr/dead, 팀 불일치, MaxGarrison 가득)
+	// 거부 케이스에선 OnGarrisonChanged 브로드캐스트 안 함.
+	UFUNCTION(BlueprintCallable, Category = "City|Garrison")
+	bool AddToGarrison(ABVAutobotBase* Unit);
+
+	// 출격/사망/이전 등으로 게리슨에서 빼낼 때 호출.
+	UFUNCTION(BlueprintCallable, Category = "City|Garrison")
+	void RemoveFromGarrison(ABVAutobotBase* Unit);
+
+	// ─── Dispatch (도시간 출격) ──────────────────────────────
+	// 이 도시에서 출격할 목표 도시. 비어 있으면 자동 출격 평가는 항상 실패.
+	// 자기 자신을 가리키는 경우는 무시 (Set 단계에서 가드).
+	UPROPERTY(BlueprintReadOnly, Category = "City|Dispatch", meta = (HideInDetailPanel))
+	TWeakObjectPtr<ABVCityBase> DispatchTargetCity;
+
+	// DispatchTargetCity 변경 시 1회 브로드캐스트 (UI 화살표/마커 갱신용). nullptr 가능.
+	UPROPERTY(BlueprintAssignable, Category = "City|Dispatch")
+	FOnDispatchTargetChanged OnDispatchTargetChanged;
+
+	// 출격이 실제로 발사된 직후 1회 브로드캐스트 (FromCity, ToCity).
+	// 게리슨이 비워지고 유닛들이 목표 도시로 이동을 시작한 직후 호출.
+	UPROPERTY(BlueprintAssignable, Category = "City|Dispatch")
+	FOnDispatchFired OnDispatchFired;
+
+	// 출격 목표 도시를 지정. nullptr이나 자기 자신이면 ClearDispatchTargetCity와 동일.
+	// 변경 후 즉시 자동 평가가 돌아 Threshold가 이미 충족되면 그 자리에서 발사된다.
+	UFUNCTION(BlueprintCallable, Category = "City|Dispatch")
+	void SetDispatchTargetCity(ABVCityBase* NewTargetCity);
+
+	// 출격 목표 도시 해제 — 자동 출격이 멈춘다 (게리슨은 그대로 유지).
+	UFUNCTION(BlueprintCallable, Category = "City|Dispatch")
+	void ClearDispatchTargetCity();
+
+	// 현재 출격 목표 도시 (없으면 nullptr).
+	UFUNCTION(BlueprintPure, Category = "City|Dispatch")
+	ABVCityBase* GetDispatchTargetCity() const { return DispatchTargetCity.Get(); }
+
+	// 수동 출격 — Threshold 무시. 목표 도시가 유효하고 게리슨이 비어있지 않으면 즉시 전부 출격.
+	// 출격 = 게리슨 유닛 모두에게 목표 도시 위치를 RallyDestination으로 지정 + 본 도시 게리슨에서 제거.
+	// 유닛은 DispatchedToCity를 들고 가서 Step 5(도착 판정)에서 사용된다.
+	UFUNCTION(BlueprintCallable, Category = "City|Dispatch")
+	void Dispatch();
 
 	// 현재 점령 진행도. -1=Enemy, 0=중립, +1=Player.
 	UFUNCTION(BlueprintPure, Category = "City|Capture")
@@ -88,6 +214,16 @@ public:
 	// VFX 자동 정지용 타이머 핸들.
 	FTimerHandle BottomVFXStopTimerHandle;
 
+	// ─── Build Radius Visual ──────────────────────────────────
+	// 빌드 모드 진입 시 도시 바닥에 표시되는 반경 데칼. 평소엔 숨김.
+	// 사이즈는 BuildRadius * 2 (지름) 로 BeginPlay에서 한 번 세팅.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "City|Build")
+	TObjectPtr<UDecalComponent> BuildRadiusDecal;
+
+	// BuildRadiusDecal에 입혀진 MID. 머티리얼 파라미터 조정용 캐시 (현재는 단순 토글만).
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> BuildRadiusMID;
+
 protected:
 	virtual void BeginPlay() override;
 
@@ -116,17 +252,28 @@ protected:
 	// PrevTeam/NewTeam 조합으로 "점령/수복/탈환" 문구 자동 선택.
 	void BroadcastCaptureAnnouncement(EBVTeam PrevTeam, EBVTeam NewTeam) const;
 
-	// 스폰 시점의 팀에 맞는 레인을 AssignedLane에 세팅 후 부모 구현 호출.
+	// "거점 [name]을 발견했습니다." 공지를 PlayerController에 요청.
+	void BroadcastDiscoveryAnnouncement() const;
+
+	// City는 부모 lane-기반 스폰을 사용하지 않고, 도시 내 RallyPoint로 향하는 게리슨 유닛을 생성한다.
+	// MaxGarrison 도달 시 즉시 return (생산 일시정지).
 	virtual void SpawnUnit() override;
+
+	// Garrison 배열에서 죽었거나 GC된 약참조를 정리. 변경 발생 시 OnGarrisonChanged 브로드캐스트.
+	void PruneGarrison();
+
+	// 자동 출격 평가: Threshold > 0 && 게리슨 수 >= Threshold && DispatchTargetCity 유효 → Dispatch().
+	void EvaluateAutoDispatch();
+
+	// OnGarrisonChanged 델리게이트 핸들러. EvaluateAutoDispatch에 위임.
+	UFUNCTION()
+	void HandleGarrisonChangedForAutoDispatch(int32 NewGarrisonCount);
 
 	// BuildingData에 UBVCityData가 할당돼 있으면 그 포인터를 반환. 아니면 nullptr.
 	const UBVCityData* GetCityData() const;
 
 	// DA에서 읽어온 런타임 상태. BeginPlay에서 세팅됨.
-	// 기본값은 DA가 없을 때의 fallback (기존 동작 유지).
-	UPROPERTY(BlueprintReadOnly, Category = "City", meta = (HideInDetailPanel))
-	bool bStartsNeutral = true;
-
+	// 거점의 초기 소유 팀은 BuildingData->TeamType을 그대로 사용한다 (별도 필드 없음).
 	UPROPERTY(BlueprintReadOnly, Category = "City", meta = (HideInDetailPanel))
 	float PostCaptureInvulnSeconds = 0.f;
 

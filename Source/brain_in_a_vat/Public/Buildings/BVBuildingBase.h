@@ -17,6 +17,10 @@ class USphereComponent;
 class UWidgetComponent;
 class UUBVBuildingOverheadWidget;
 class ABVLane;
+class ABVCityBase;
+class UMaterialInterface;
+class UMaterialInstanceDynamic;
+class UDecalComponent;
 
 UCLASS()
 class BRAIN_IN_A_VAT_API ABVBuildingBase :  public AActor,
@@ -173,6 +177,18 @@ public:
 	UFUNCTION()
 	virtual void SpawnUnit();
 	FTimerHandle SpawnTimerHandle;
+
+	// ─── Owning City (도시 게리슨에 합류) ─────────────────────
+	// BeginPlay에서 자기 위치를 BuildRadius 안에 포함하는 도시를 찾아 캐싱.
+	// 유효하면: 이 건물에서 생산된 유닛은 도시 게리슨에 합류하고, 도시의 RallyPoint로 이동.
+	//          도시 게리슨이 가득 차면 SpawnUnit이 즉시 return → 생산 일시정지.
+	// 무효: 기존 lane 기반 동작 그대로 유지.
+	UPROPERTY(BlueprintReadOnly, Category = "City|Garrison", meta = (HideInDetailPanel))
+	TWeakObjectPtr<ABVCityBase> OwningCity;
+
+	// 자기 위치를 가장 가깝게 포함하는 도시를 찾아 OwningCity에 캐싱.
+	// (자신이 ABVCityBase면 검색하지 않고 종료 — 도시는 자기 자신을 owning city로 갖지 않는다.)
+	void ResolveOwningCity();
 	
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Spawn Unit")
 	TObjectPtr<AActor> FriendlyMainBase;
@@ -213,6 +229,11 @@ public:
 	UPROPERTY(EditAnywhere, Category = "Building|Emission")
 	FName EmissionColorParamName = TEXT("EmissionColor");
 
+	// 펄스 위상을 인스턴스마다 다르게 주기 위한 스칼라 파라미터 이름.
+	// 머티리얼에서 Time에 더해 sin/frac 같은 펄스 함수에 먹이면 건물마다 박자가 어긋남.
+	UPROPERTY(EditAnywhere, Category = "Building|Emission")
+	FName PhaseOffsetParamName = TEXT("PhaseOffset");
+
 protected:
 	// StaticMesh의 각 머티리얼 슬롯을 MID로 래핑해 런타임 파라미터 조작을 가능하게 함.
 	virtual void InitDynamicMaterials();
@@ -239,14 +260,65 @@ public:
 	UPROPERTY()
 	TObjectPtr<UUBVBuildingOverheadWidget> OverheadWidget;
 
-// Mouse-hovering effect
+// Mouse-hovering effect (지상 데칼 링으로 표시)
 public:
 	UFUNCTION()
 	void SetHovered_Implementation(bool bInHovered) override;
-	
+
+	// 데칼 MID에 전달할 파라미터 이름 (M_HoverRingDecal 의 Scalar/Vector 파라미터 이름과 일치해야 함).
+	UPROPERTY(EditAnywhere, Category = "UI|Hover")
+	FName RingIntensityParamName = TEXT("Intensity");
+
+	UPROPERTY(EditAnywhere, Category = "UI|Hover")
+	FName RingTintParamName = TEXT("Tint");
+
+	UPROPERTY(EditAnywhere, Category = "UI|Hover")
+	FName RingThicknessParamName = TEXT("Thickness");
+
+	// 링 두께 (월드 유닛). 건물 크기와 무관하게 일정하게 보이도록 런타임에 UV 비율로 변환됨.
+	UPROPERTY(EditAnywhere, Category = "UI|Hover", meta=(ClampMin="1.0", ClampMax="50.0"))
+	float HoverRingThickness = 8.f;
+
+	// 호버 페이드 속도. FInterpTo의 Interp Speed (값이 클수록 빨리 붙음).
+	UPROPERTY(EditAnywhere, Category = "UI|Hover", meta=(ClampMin="0.5", ClampMax="30"))
+	float HoverEaseSpeed = 10.f;
+
+	// 바닥에 그릴 링 데칼 머티리얼. 생성자에서 /Game/Materials/M_HoverRingDecal을 기본 할당.
+	// BP에서 개별 오버라이드 가능.
+	UPROPERTY(EditAnywhere, Category = "UI|Hover")
+	TSoftObjectPtr<UMaterialInterface> HoverRingMaterial;
+
+	// 링 지름 배율. 메시 풋프린트 대비 링 크기. 내부적으로 0.65 캘리브레이션 계수가
+	// 곱해지므로, 1.0이 "적당히 감싸는" 기본값. 1.5 주면 메시 경계 바깥으로 50% 삐져나옴.
+	UPROPERTY(EditAnywhere, Category = "UI|Hover", meta=(ClampMin="0.3", ClampMax="3.0"))
+	float HoverRingPadding = 1.0f;
+
+	// 데칼 박스의 투영 깊이. 경사/고도 차이가 있으면 더 키워야 함.
+	UPROPERTY(EditAnywhere, Category = "UI|Hover", meta=(ClampMin="32"))
+	float HoverRingDepth = 256.f;
+
+	// 데칼의 액터 기준 오프셋. 건물은 원점이 바닥이라 보통 0이면 됨.
+	UPROPERTY(EditAnywhere, Category = "UI|Hover")
+	FVector HoverRingOffset = FVector(0.f, 0.f, 50.f);
+
 protected:
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	bool bIsHovered = false;
-	
-	
+
+	float HoverTargetValue = 0.f;
+	float HoverCurrentValue = 0.f;
+	FLinearColor HoverTintColor = FLinearColor::White;
+
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Hover")
+	TObjectPtr<UDecalComponent> HoverRingDecal;
+
+	UPROPERTY(Transient)
+	TObjectPtr<UMaterialInstanceDynamic> HoverRingMID;
+
+	// 새 StaticMesh 기반 hover ring. BoxComponent extent 기반으로 AutoSize.
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Hover")
+	TObjectPtr<class UBVStaticHoverRingComponent> StaticHoverRingComponent;
+
+	// Tick에서 HoverCurrentValue를 HoverTargetValue로 이징하면서 데칼 MID를 갱신.
+	void UpdateHoverAnim(float DeltaTime);
 };

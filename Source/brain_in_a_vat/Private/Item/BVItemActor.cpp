@@ -35,6 +35,8 @@ ABVItemActor::ABVItemActor()
 	MeshComponent = CreateDefaultSubobject<UStaticMeshComponent>(TEXT("MeshComponent"));
 	MeshComponent->SetupAttachment(RootComponent);
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
+	// 아이템 메시는 월드 데칼(City 빌드 반경 등)을 받지 않음. 지면에만 깔리게.
+	MeshComponent->SetReceivesDecals(false);
 
 	// Auto-Rotation Component
 	RotatingComponent = CreateDefaultSubobject<URotatingMovementComponent>(TEXT("RotatingMovementComponent"));
@@ -48,7 +50,9 @@ void ABVItemActor::BeginPlay()
 	Super::BeginPlay();
 
 	InitialRelativeLocation = MeshComponent->GetRelativeLocation();
-	SphereComponent->OnComponentBeginOverlap.AddDynamic(this, &ABVItemActor::OnOverlapBegin);
+	// AddUniqueDynamic: BeginPlay가 어떤 이유로 중복 호출되어도 같은 핸들러가 두 번 등록되지 않도록 가드.
+	// 일반 AddDynamic은 SparseDynamicDelegate에서 중복 등록 시 ensure를 발생시킨다.
+	SphereComponent->OnComponentBeginOverlap.AddUniqueDynamic(this, &ABVItemActor::OnOverlapBegin);
 }
 
 void ABVItemActor::OnConstruction(const FTransform& Transform)
@@ -86,17 +90,11 @@ void ABVItemActor::Tick(float DeltaTime)
 
 void ABVItemActor::SetHovered_Implementation(bool bInHovered)
 {
-
-	uint8 Stencil = 1;
-	// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-	// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
-	
 	if (MeshComponent)
 	{
 		MeshComponent->SetRenderCustomDepth(bInHovered);
 		MeshComponent->SetCustomDepthStencilValue(bInHovered? 1:0);
 	}
-	
 }
 
 void ABVItemActor::OnOverlapBegin(UPrimitiveComponent* OverlappedComponent, AActor* OtherActor,

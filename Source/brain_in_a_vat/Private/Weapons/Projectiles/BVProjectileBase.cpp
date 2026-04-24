@@ -217,17 +217,9 @@ void ABVProjectileBase::ApplyDataAsset()
 	// 중복 호출 가드 — 혹시라도 두 번 호출되면 Trail 이 두 번 스폰된다.
 	if (bDataAssetApplied)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("[Projectile] ApplyDataAsset called twice on %s — skipping second call"),
-			*GetName());
 		return;
 	}
 	bDataAssetApplied = true;
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[Projectile] ApplyDataAsset on %s: Trail=%s"),
-		*GetName(),
-		PData->TrailEffect ? *PData->TrailEffect->GetName() : TEXT("NULL"));
 
 	// --- Visual: Mesh ---
 	if (StaticMeshComponent && PData->ProjectileMesh)
@@ -252,9 +244,6 @@ void ABVProjectileBase::ApplyDataAsset()
 		for (UNiagaraComponent* NC : ExistingNCs)
 		{
 			if (!NC) continue;
-			UE_LOG(LogTemp, Warning,
-				TEXT("[Projectile] Stripping pre-existing NiagaraComponent '%s' on %s (DA manages trail)"),
-				*NC->GetName(), *GetName());
 			NC->Deactivate();
 			NC->DestroyComponent();
 		}
@@ -337,14 +326,6 @@ void ABVProjectileBase::SetLaunchVelocity(const FVector& LaunchVelocity)
 void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedComp, AActor* OtherActor,
                                                 UPrimitiveComponent* OtherComp, int32 OtherBodyIndex, bool bFromSweep, const FHitResult& SweepResult)
 {
-	// 데미지 플로우 추적용 임시 로그. 원인 파악 후 지워도 됨.
-	UE_LOG(LogTemp, Warning,
-		TEXT("[Projectile] Overlap: Proj=%s Other=%s (class=%s) Comp=%s"),
-		*GetName(),
-		OtherActor ? *OtherActor->GetName() : TEXT("NULL"),
-		OtherActor ? *OtherActor->GetClass()->GetName() : TEXT("NULL"),
-		OtherComp ? *OtherComp->GetName() : TEXT("NULL"));
-
 	if (!OtherActor || OtherActor == this || OtherActor == GetOwner()) return;
 	if (!OtherActor->Implements<UBVDamageableInterface>()) return;
 	if (IBVDamageableInterface::Execute_IsDestroyed(OtherActor)) return;
@@ -389,10 +370,6 @@ void ABVProjectileBase::OnCollisionBeginOverlap(UPrimitiveComponent* OverlappedC
 	{
 		TargetBuilding->HandleDamageReceived(GetInstigator(), DamageAmount);
 	}
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[Projectile] Applying GE to %s: Amount=%.1f MyTeam=%d TargetTeam=%d"),
-		*OtherActor->GetName(), DamageAmount, (int32)MyTeamId.GetId(), (int32)TargetTeamId.GetId());
 
 	TargetASC->ApplyGameplayEffectSpecToSelf(*SpecHandle.Data.Get());
 

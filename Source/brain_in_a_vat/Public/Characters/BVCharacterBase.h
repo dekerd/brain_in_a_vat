@@ -16,6 +16,7 @@
 class UWidgetComponent;
 class UBVHealthComponent;
 class UDataTable;
+class UBVStaticHoverRingComponent;
 
 UCLASS()
 class BRAIN_IN_A_VAT_API ABVCharacterBase : public ACharacter,
@@ -47,15 +48,18 @@ public:
 	FText UnitName = FText::FromString(TEXT("Default Unit Name"));
 protected:
 
-// Mouse-hovering effect
+// Mouse-hovering effect (지상 링으로 표시) — UBVStaticHoverRingComponent에 위임.
 public:
 	virtual void SetHovered_Implementation(bool bInHovered) override;
-	
+
 protected:
+	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI|Hover")
+	TObjectPtr<UBVStaticHoverRingComponent> StaticHoverRingComponent;
+
 	UPROPERTY(VisibleAnywhere, BlueprintReadOnly, Category = "UI")
 	bool bIsHovered = false;
-	
-	
+
+
 // Sound Effects
 public:
 	void PlayInteractionSound();

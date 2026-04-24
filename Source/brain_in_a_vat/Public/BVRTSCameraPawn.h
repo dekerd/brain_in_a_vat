@@ -67,5 +67,14 @@ protected:
 
 	bool bIsTracking = false;
 
+	// Jump interpolation — JumpToLocation을 등속 이동으로.
+	UPROPERTY(EditAnywhere, Category = "Camera|Jump", meta=(ClampMin="0.05", ClampMax="2.0"))
+	float JumpDuration = 0.2f;
+
+	bool bIsJumping = false;
+	FVector JumpStartLocation = FVector::ZeroVector;
+	FVector JumpTargetLocation = FVector::ZeroVector;
+	float JumpElapsed = 0.f;
+
 	void HandleEdgePanning(float DeltaTime);
 };

@@ -46,19 +46,11 @@ float UBVHealthComponent::GetMaxHealth() const
 
 void UBVHealthComponent::OnHealthChanged(const FOnAttributeChangeData& Data)
 {
-	UE_LOG(LogTemp, Warning,
-		TEXT("[HP] %s  Old=%.1f  New=%.1f  Max=%.1f"),
-		GetOwner() ? *GetOwner()->GetName() : TEXT("?"),
-		Data.OldValue, Data.NewValue, GetMaxHealth());
-
 	const float HealthRatio = GetHealthRatio();
 	OnHealthChangedUI.Broadcast(HealthRatio);
 
 	if (GetCurrentHealth() <= 0.f)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[HP] %s DEAD TRIGGERED"),
-			GetOwner() ? *GetOwner()->GetName() : TEXT("?"));
-
 		if (ABVAutobotBase* OwnerAutobot = Cast<ABVAutobotBase>(GetOwner()))
 		{
 			OwnerAutobot->Dead();

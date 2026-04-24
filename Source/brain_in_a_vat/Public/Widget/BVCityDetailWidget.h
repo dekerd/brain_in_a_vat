@@ -10,6 +10,8 @@ class ABVCityBase;
 class UImage;
 class UTextBlock;
 class UProgressBar;
+class UPanelWidget;
+class UBVConstructionMenuSlotWidget;
 
 /**
  * 거점(ABVCityBase) 전용 상세 패널.
@@ -62,6 +64,17 @@ public:
 	UPROPERTY(meta = (BindWidgetOptional))
 	UProgressBar* RespawnProgressBar;
 
+	// --- Build Catalog (도시별 건설 가능 건물 목록) ---
+	// WBP_CityDetail에 WrapBox/UniformGridPanel/VerticalBox 등 어떤 컨테이너든 이 이름으로 두면 자동 채워짐.
+	// 컨테이너가 없으면 카탈로그 기능 비활성 (기존 City 위젯과 호환).
+	UPROPERTY(meta = (BindWidgetOptional))
+	UPanelWidget* BuildableContainer;
+
+	// 카탈로그에 인스턴싱할 슬롯 위젯 클래스. 기본 빌드 메뉴와 동일한 슬롯(WBP_ConstructionMenuSlot 등)을
+	// 그대로 재사용 가능. 비어있으면 카탈로그를 채우지 않음.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City Detail|Build")
+	TSubclassOf<UBVConstructionMenuSlotWidget> CatalogEntryWidgetClass;
+
 	// --- 색상 파라미터 ---
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Capture")
 	FLinearColor PlayerCaptureColor = FLinearColor(0.1f, 1.f, 0.1f, 1.f);
@@ -90,6 +103,11 @@ protected:
 	// 스폰 유닛 섹션(아이콘/이름/리스폰바) 표시 여부를 현재 상태 기준으로 갱신.
 	// 중립이거나 스폰 유닛 미설정이면 전부 Collapsed.
 	void UpdateSpawnUnitVisibility();
+
+	// City->BuildableBuildings를 읽어 BuildableContainer 안에 슬롯을 새로 생성/배치.
+	// 이미 들어있던 자식 위젯은 모두 제거 후 다시 채움 (도시 전환 대비).
+	// 도시가 Player 소유가 아니면 컨테이너 자체를 Collapsed.
+	void RebuildBuildableCatalog();
 
 	TWeakObjectPtr<ABVCityBase> BoundCity;
 };

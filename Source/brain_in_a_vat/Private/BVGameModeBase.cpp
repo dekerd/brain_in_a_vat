@@ -15,10 +15,5 @@ ABVGameModeBase::ABVGameModeBase()
 
 void ABVGameModeBase::GameOver(uint8 LosingTeam)
 {
-	FString ResultMsg = (LosingTeam == 1) ? TEXT("DEFEAT") : TEXT("VICTORY");
-
-	FString DebugMsg = FString::Printf(TEXT("Game Over : %s"), *ResultMsg);
-	GEngine->AddOnScreenDebugMessage(-1, 10.0f, FColor::Red, DebugMsg);
-
 	UGameplayStatics::SetGamePaused(GetWorld(), true);
 }

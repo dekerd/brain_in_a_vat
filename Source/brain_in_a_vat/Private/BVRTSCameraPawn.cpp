@@ -70,7 +70,29 @@ void ABVRTSCameraPawn::Tick(float DeltaTime)
 	// 1. 카메라 줌을 부드럽게(Interpolation) 적용
 	CameraBoom->TargetArmLength = FMath::FInterpTo(CameraBoom->TargetArmLength, TargetZoom, DeltaTime, ZoomInterpSpeed);
 
-	// 2. 캐릭터 추적 로직 또는 엣지 스크롤 로직
+	// 2. Jump 진행 — 등속 linear interp.
+	if (bIsJumping)
+	{
+		// 타겟이 움직이는 actor(CenterOnActor로 진입한 경우)면 매 틱 타겟 위치 갱신.
+		// 그래야 Hero가 이동 중이어도 Jump 종료 시 Hero 위치와 정확히 일치.
+		if (AActor* Follow = TargetToFollow)
+		{
+			JumpTargetLocation = Follow->GetActorLocation();
+			JumpTargetLocation.Z = JumpStartLocation.Z;
+		}
+
+		JumpElapsed += DeltaTime;
+		const float Alpha = FMath::Clamp(JumpElapsed / FMath::Max(JumpDuration, KINDA_SMALL_NUMBER), 0.f, 1.f);
+		SetActorLocation(FMath::Lerp(JumpStartLocation, JumpTargetLocation, Alpha));
+
+		if (Alpha >= 1.f)
+		{
+			bIsJumping = false;
+		}
+		return; // jump 중에는 tracking/edge-scroll 로직 중단.
+	}
+
+	// 3. 캐릭터 추적 로직 또는 엣지 스크롤 로직
 	if (bIsTracking && TargetToFollow)
 	{
 		FVector CurrentLoc = GetActorLocation();
@@ -88,6 +110,7 @@ void ABVRTSCameraPawn::MoveCamera(FVector2D PanDirection)
 	if (PanDirection.X != 0.f || PanDirection.Y != 0.f)
 	{
 		bIsTracking = false;
+		bIsJumping = false; // 유저가 직접 조작하면 jump 취소.
 
 		FVector Forward = CameraBoom->GetForwardVector();
 		Forward.Z = 0.f;
@@ -104,24 +127,34 @@ void ABVRTSCameraPawn::MoveCamera(FVector2D PanDirection)
 
 void ABVRTSCameraPawn::CenterOnActor(AActor* TargetActor)
 {
-	if (TargetActor)
-	{
-		TargetToFollow = TargetActor;
-		bIsTracking = true;
-		SetActorLocation(TargetActor->GetActorLocation());
-	}
+	if (!TargetActor) return;
+
+	// Jump interp로 부드럽게 이동. Jump가 끝나면 bIsJumping=false가 되고
+	// Tick의 tracking 루프(bIsTracking=true)가 이어서 actor를 따라간다.
+	JumpStartLocation = GetActorLocation();
+	JumpTargetLocation = TargetActor->GetActorLocation();
+	JumpTargetLocation.Z = JumpStartLocation.Z;
+	JumpElapsed = 0.f;
+	bIsJumping = true;
+
+	TargetToFollow = TargetActor;
+	bIsTracking = true;
 }
 
 void ABVRTSCameraPawn::JumpToLocation(const FVector& WorldLocation)
 {
-	// 캐릭터 추적을 해제하고 지정된 위치로 즉시 이동
+	// 캐릭터 추적과 이전 jump를 취소하고 이번 jump를 시작.
 	bIsTracking = false;
 	TargetToFollow = nullptr;
 
-	// Z는 유지(카메라 Rig의 높이는 그대로 둠)
-	FVector NewLoc = WorldLocation;
-	NewLoc.Z = GetActorLocation().Z;
-	SetActorLocation(NewLoc);
+	JumpStartLocation = GetActorLocation();
+
+	// Z는 유지(카메라 Rig의 높이는 그대로 둠).
+	JumpTargetLocation = WorldLocation;
+	JumpTargetLocation.Z = JumpStartLocation.Z;
+
+	JumpElapsed = 0.f;
+	bIsJumping = true;
 }
 
 void ABVRTSCameraPawn::ZoomCamera(float ZoomValue)

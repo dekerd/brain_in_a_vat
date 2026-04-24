@@ -3,6 +3,7 @@
 
 #include "Characters/BVAutobotBase.h"
 #include "AI/BVAIController.h"
+#include "Navigation/PathFollowingComponent.h" // FPathFollowingRequestResult 완전 정의 (MoveTo 반환형)
 #include "GameFramework/CharacterMovementComponent.h"
 #include "GameFramework/ProjectileMovementComponent.h"
 #include "GAS/CombatAttributeSet.h"
@@ -21,6 +22,7 @@
 #include "Widget/BVHealthBarWidget.h"
 #include "BVPlayerController.h"
 #include "Buildings/BVBuildingBase.h"
+#include "Buildings/BVCityBase.h"
 #include "Data/BVUnitData.h"
 #include "Interface/BVDamageableInterface.h"
 #include "Weapons/Projectiles/BVProjectileBase.h"
@@ -179,8 +181,6 @@ void ABVAutobotBase::BeginPlay()
 
 	GetMesh()->SetCollisionProfileName(TEXT("Hoverable"));
 
-	UE_LOG(LogTemp, Warning, TEXT("MeshProfile=%s, MouseHoverResponse=%d"), *GetMesh()->GetCollisionProfileName().ToString(), (int32)GetMesh()->GetCollisionResponseToChannel(ECC_MouseHover));
-
 	// Setting Team Information
 	AAIController* AIController = Cast<AAIController>(GetController());
 
@@ -291,6 +291,9 @@ void ABVAutobotBase::Tick(float DeltaTime)
 
 	// 원거리 유닛은 쿨다운 기반으로 자동 발사 (애님 노티파이와 무관)
 	TickRangedAttack(DeltaTime);
+
+	// 도시→도시 출격 중이면 도착 판정. (DispatchedToCity가 비어있으면 즉시 return해 거의 무비용.)
+	TickDispatchArrival(DeltaTime);
 }
 
 AActor* ABVAutobotBase::GetBBAttackTarget() const
@@ -543,9 +546,6 @@ void ABVAutobotBase::ApplyInitStatFromDataAsset()
 {
 	if (!ASC || !UnitData || !CombatAttributes)
 	{
-		UE_LOG(LogTemp, Error,
-			TEXT("[InitStat] %s SKIPPED  ASC=%d UnitData=%d CombatAttributes=%d"),
-			*GetName(), ASC != nullptr, UnitData != nullptr, CombatAttributes != nullptr);
 		return;
 	}
 
@@ -591,15 +591,6 @@ void ABVAutobotBase::ApplyInitStatFromDataAsset()
 	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAttackSpeedAttribute(), UnitData->AttackSpeed);
 	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetAttackRangeAttribute(), UnitData->AttackRange);
 	ASC->SetNumericAttributeBase(UCombatAttributeSet::GetMovementSpeedAttribute(), UnitData->MovementSpeed);
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[InitStat] %s: MaxHP=%.1f HP=%.1f Dmg=%.1f Def=%.1f AS=%.2f"),
-		*GetName(),
-		CombatAttributes->GetMaxHealth(),
-		CombatAttributes->GetHealth(),
-		CombatAttributes->GetDamage(),
-		CombatAttributes->GetDefense(),
-		CombatAttributes->GetAttackSpeed());
 }
 
 void ABVAutobotBase::Attack()
@@ -631,6 +622,9 @@ void ABVAutobotBase::Dead()
 
 	if (bIsDead) return;
 	bIsDead = true;
+
+	// 출격 중 사망 — 목표 도시 약참조 정리. (AddToGarrison이 bIsDead로도 막지만 명시 정리.)
+	DispatchedToCity.Reset();
 
 	// Stop Any playing montage
 	UAnimInstance* AnimInstance = GetMesh()->GetAnimInstance();
@@ -716,14 +710,12 @@ void ABVAutobotBase::PerformAttackHit()
 	ABVAIController* AIController = Cast<ABVAIController>(GetController());
 	if (!AIController)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No AIController"));
 		return;
 	}
 
 	UBlackboardComponent* BB = AIController->GetBlackboardComponent();
 	if (!BB)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No BB"));
 		return;
 	}
 
@@ -751,7 +743,6 @@ void ABVAutobotBase::PerformAttackHit()
 	// 근접: BB 타겟 필수
 	if (!IsValid(BBTarget))
 	{
-		UE_LOG(LogTemp, Warning, TEXT("PerformAttackHit() - No Target Actor!"));
 		return;
 	}
 	ApplyDamageToTarget(BBTarget);
@@ -934,14 +925,12 @@ void ABVAutobotBase::ApplyDamageToTarget(AActor* TargetActor)
 	IAbilitySystemInterface* TargetASI = Cast<IAbilitySystemInterface>(TargetActor);
 	if (!TargetASI)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ApplyDamageToTarget() - No Target ASI!"));
 		return;
 	}
 
 	UAbilitySystemComponent* TargetASC = TargetASI->GetAbilitySystemComponent();
 	if (!TargetASC)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("ApplyDamageToTarget() - No Target ASC!"));
 		return;
 	}
 
@@ -970,4 +959,79 @@ void ABVAutobotBase::ApplyDamageToTarget(AActor* TargetActor)
 	}
 }
 
+void ABVAutobotBase::TickDispatchArrival(float DeltaTime)
+{
+	// 출격 중이 아니면 비용 0.
+	ABVCityBase* TargetCity = DispatchedToCity.Get();
+	if (!TargetCity)
+	{
+		// GC됐을 수 있으니 약참조도 확실히 비워둠.
+		if (DispatchedToCity.IsStale()) DispatchedToCity.Reset();
+		return;
+	}
 
+	if (bIsDead)
+	{
+		DispatchedToCity.Reset();
+		return;
+	}
+
+	// 폴링 간격 누적.
+	DispatchArrivalCheckTimer += DeltaTime;
+	if (DispatchArrivalCheckTimer < DispatchArrivalCheckInterval) return;
+	DispatchArrivalCheckTimer = 0.f;
+
+	// 목표 도시 팀 변경 감지 → 출격 자체 무효화.
+	// (Neutral도 합류 불가 — AddToGarrison이 어차피 false 반환할 텐데 미리 차단해 lingering 방지.)
+	if (TargetCity->GetGenericTeamId() != GetGenericTeamId())
+	{
+		DispatchedToCity.Reset();
+		return;
+	}
+
+	// 도착 판정: 목표 도시 BuildRadius 안 진입 = 도착.
+	if (!TargetCity->IsLocationWithinBuildRadius(GetActorLocation()))
+	{
+		return; // 아직 도착 안 함 — 다음 폴링에 재체크.
+	}
+
+	// 등록 시도.
+	const bool bRegistered = TargetCity->AddToGarrison(this);
+
+	if (bRegistered)
+	{
+		// 합류 성공 — 도시 내부 RallyPoint로 자연스럽게 흡수.
+		DispatchedToCity.Reset();
+		SetRallyDestination(TargetCity->RallyPoint);
+	}
+	// else: 게리슨 Full / 팀 변동 등 — DispatchedToCity 유지하고 다음 폴링에 재시도.
+	//       유닛은 도시 영역 안에서 lingering 상태로 머무름.
+}
+
+void ABVAutobotBase::SetRallyDestination(const FVector& NewRallyPoint)
+{
+	bHasRallyDestination = true;
+	RallyDestination = NewRallyPoint;
+
+	// AI가 살아있고 전투 중이 아니면 즉시 BB의 TargetLocation을 새 지점으로 갱신.
+	// 전투 중이라면 Perception이 끝나면서 자연스럽게 SetTargetLocationFromLaneState/Rally로 돌아오게 두자.
+	if (ABVAIController* AICon = Cast<ABVAIController>(GetController()))
+	{
+		if (UBlackboardComponent* BB = AICon->GetBlackboardComponent())
+		{
+			const bool bAttacking = BB->GetValueAsBool(TEXT("bIsAttacking"));
+			if (!bAttacking)
+			{
+				BB->SetValueAsVector(TEXT("TargetLocation"), NewRallyPoint);
+
+				// BT MoveTo가 latent 상태라면 즉시 갱신을 못 받을 수 있으니 명시적 MoveTo 한 번 더.
+				FAIMoveRequest Req;
+				Req.SetGoalLocation(NewRallyPoint);
+				Req.SetAcceptanceRadius(80.f);
+				Req.SetUsePathfinding(true);
+				Req.SetAllowPartialPath(true);
+				AICon->MoveTo(Req);
+			}
+		}
+	}
+}

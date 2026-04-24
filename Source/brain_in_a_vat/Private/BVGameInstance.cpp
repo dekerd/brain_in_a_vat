@@ -6,6 +6,4 @@
 void UBVGameInstance::Init()
 {
 	Super::Init();
-
-	UE_LOG(LogTemp, Warning, TEXT("Test Success"));
 }
