@@ -17,9 +17,6 @@ void UBVHealthBarWidget::InitWithHealthComponent(UBVHealthComponent* InHealthCom
 	HealthProgressBar->SetPercent(Ratio);
 
 	// Apply different colors by team info
-
-	UE_LOG(LogTemp, Warning, TEXT("Owner Team Flag : %d"), HealthComponent->GetOwnerTeamFlag())
-
 	if (HealthComponent->GetOwnerTeamFlag() == 1)
 	{
 		HealthProgressBar->SetFillColorAndOpacity(FLinearColor::Green);

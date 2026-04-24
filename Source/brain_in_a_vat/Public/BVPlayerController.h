@@ -12,6 +12,7 @@
 class ABVNPCBase;
 class ABVBuildingGhost;
 class ABVBuildingBase;
+class ABVCityBase;
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnSelectionChanged, AActor*, NewSelectedActor);
 
 /**
@@ -81,8 +82,10 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ToggleInventoryUI();
 
+	// ContextCity가 nullptr이면 글로벌 Hero 빌드 카탈로그(Player 빌딩 DA 목록)를 표시하고,
+	// 지정되면 해당 도시의 BuildableBuildings로 슬롯을 채워 도시-컨텍스트 빌드 흐름을 탄다.
 	UFUNCTION(BlueprintCallable, Category = "UI")
-	void ToggleConstructionMenuUI();
+	void ToggleConstructionMenuUI(ABVCityBase* ContextCity = nullptr);
 
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void CloseCurrentUI();
@@ -147,6 +150,14 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	TObjectPtr<class UInputAction> FocusLastCombatAction;
 
+	// Hero 강제 선택 (기본 키: Space). HeroCharacter를 즉시 SelectedHero로 세팅해 발밑 링을 켠다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> SelectHeroAction;
+
+	// 내가 소유한 첫 번째 거점으로 카메라 Jump (기본 키: 1).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> FocusFirstCityAction;
+
 	UPROPERTY()
 	bool bIsWaitingForArrival = false;
 
@@ -158,6 +169,8 @@ protected:
 	void OnCameraPan(const FInputActionValue& Value);
 	void OnCameraCenterPressed();
 	void OnFocusLastCombatPressed();
+	void OnSelectHeroPressed();
+	void OnFocusFirstCityPressed();
 
 public:
 	// 전투 발생 시 유닛/타워가 호출. 가장 최근 전투 좌표를 기록한다.
@@ -213,9 +226,19 @@ public:
 	UFUNCTION(BlueprintCallable, Category = "Build")
 	void EnterConstructionMode(TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime);
 
+	// 도시 패널의 "건설" 버튼이 호출. 도시 반경 안에서만 짓고 Hero 이동/도착 절차를 생략하는
+	// 즉시-건설 경로. 내부적으로 EnterConstructionMode를 재사용해 ghost/IMC 셋업을 공유한다.
+	// City가 nullptr이면 일반 EnterConstructionMode와 동치.
+	UFUNCTION(BlueprintCallable, Category = "Build")
+	void EnterCityBuildMode(ABVCityBase* City, TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime);
+
 protected:
 	UPROPERTY()
 	TSubclassOf<ABVBuildingBase> CurrentBuildingClass;
+
+	// 현재 빌드 모드를 켠 도시. 일반 빌드 모드(Hero가 걸어가서 짓는 경로)에선 비어있음.
+	// 비어있으면: 기존 동작(Hero가 이동 후 건설). 유효하면: 도시 즉시-건설 + 반경 내 제한.
+	TWeakObjectPtr<ABVCityBase> CurrentBuildCity;
 
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "Build")
 	TSubclassOf<class ABVBuildingBase> DefaultBuildingClass;
@@ -235,13 +258,17 @@ protected:
 	UPROPERTY()
 	float PendingConstructionTime;
 
-	float StartToBuildRange = 100.0f;
 	FVector TargetBuildLocation;
 
-	bool bIsMovingToBuild = false;
-	bool bIsConstructionMode = false; 
+	bool bIsConstructionMode = false;
 	bool bCanBuild = false;
-	
+
+	// 건설 모드 진입 시각. 슬롯 좌클릭의 "마우스 업" 이벤트가 새로 활성화된 Build IMC로 흘러들어
+	// 즉시 착공되는 유령 입력을 짧은 시간 창(BuildClickInputIgnoreWindow)으로 차단.
+	// 사용자의 실제 다음 클릭은 수백 ms 이후이므로 통과한다.
+	double BuildModeEnterTime = -1.0;
+	static constexpr double BuildClickInputIgnoreWindow = 0.10; // seconds
+
 	void ExitConstructionMode();
 	void UpdateGhostLocation();
 	
@@ -340,7 +367,9 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UUserWidget> BuildingDetailWidget;
 
-	// 거점(City) 전용 상세 패널 클래스. BuildingDetail과는 별개.
+	// 거점(City) 전용 상세 패널 클래스 — fallback. BuildingDetail과는 별개.
+	// 우선순위: 도시 DA(UBVCityData)의 CityDetailWidgetClass → 비어있으면 이 값.
+	// 모든 도시가 같은 패널을 쓰면 여기만 채워두면 됨. 도시별로 다르게 쓸 땐 DA에서 오버라이드.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
 	TSubclassOf<class UUserWidget> CityDetailWidgetClass;
 
@@ -398,6 +427,15 @@ public:
 
 protected:
 	TWeakObjectPtr<class ABVAutobotBase> DetailUnit;
+
+// Hero selection (ring under player character)
+protected:
+	// 클릭으로 선택된 Hero. 커서가 벗어나도 다음 선택 변경 전까지 HoverRing 유지.
+	// Hero가 선택된 경우에만 우클릭이 이동 명령으로 해석된다.
+	TWeakObjectPtr<class AMainCharacter> SelectedHero;
+
+	void SetHeroSelected(class AMainCharacter* Hero);
+	void ClearHeroSelection();
 
 // NPC Interaction Widget
 public:

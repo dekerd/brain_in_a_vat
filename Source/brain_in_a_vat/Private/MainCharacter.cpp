@@ -13,7 +13,6 @@
 #include "GameFramework/SpringArmComponent.h"
 #include "Camera/CameraComponent.h"
 #include "UObject/ConstructorHelpers.h"
-#include "DrawDebugHelpers.h"
 #include "Buildings/BVBuildingBase.h"
 #include "Buildings/BVConstructionSite.h"
 #include "Components/SphereComponent.h"
@@ -29,6 +28,7 @@
 #include "AbilitySystemComponent.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Components/BVHealthComponent.h"
+#include "Components/BVStaticHoverRingComponent.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Perception/AISense_Sight.h"
 #include "Perception/AISense_Damage.h"
@@ -125,6 +125,10 @@ AMainCharacter::AMainCharacter()
 	// --- Health component ---
 	HealthComponent = CreateDefaultSubobject<UBVHealthComponent>(TEXT("HealthComponent"));
 
+	// --- Hover / Selection Ring ---
+	StaticHoverRingComponent = CreateDefaultSubobject<UBVStaticHoverRingComponent>(TEXT("StaticHoverRingComponent"));
+	StaticHoverRingComponent->SetupAttachment(RootComponent);
+
 	// --- AI Perception Stimuli (적이 시야로 감지) ---
 	StimuliSourceComponent = CreateDefaultSubobject<UAIPerceptionStimuliSourceComponent>(TEXT("StimuliSource"));
 	StimuliSourceComponent->bAutoRegister = true;
@@ -218,7 +222,6 @@ void AMainCharacter::ApplyInitStatFromDataAsset()
 {
 	if (!ASC || !CombatAttributes)
 	{
-		UE_LOG(LogTemp, Error, TEXT("[MainCharacter::ApplyInitStat] ASC or CombatAttributes NULL"));
 		return;
 	}
 
@@ -249,18 +252,12 @@ void AMainCharacter::ApplyInitStatFromDataAsset()
 	{
 		GetCharacterMovement()->MaxWalkSpeed = MS;
 	}
-
-	UE_LOG(LogTemp, Warning,
-		TEXT("[MainCharacter::InitStat] MaxHP=%.1f Dmg=%.1f Def=%.1f MS=%.1f"),
-		MaxHP, Dmg, Def, MS);
 }
 
 void AMainCharacter::HandleDeath()
 {
 	if (bIsDead) return;
 	bIsDead = true;
-
-	UE_LOG(LogTemp, Warning, TEXT("[MainCharacter] %s DIED"), *GetName());
 
 	// 입력 / 이동 차단
 	if (APlayerController* PC = Cast<APlayerController>(GetController()))
@@ -395,9 +392,6 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 	UBVItemData* Weapon = EquippedWeapons[WeaponIndex];
 	if (!Weapon || !Weapon->WeaponData)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("[FireWeapons] idx=%d: Weapon or WeaponData is NULL, skipping."),
-			WeaponIndex);
 		return;
 	}
 
@@ -408,12 +402,6 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 	if (GlobalFireTimer < MinFireInterval) return;
 
 	AActor* Target = FindNearestEnemyInRange();
-	UE_LOG(LogTemp, Warning,
-		TEXT("[FireWeapons] idx=%d (%s @%p) Slots=%d Cool=%.2f/%.2f Global=%.2f/%.2f EnemiesInRange=%d Target=%s"),
-		WeaponIndex, *Weapon->GetName(), Weapon, EquippedWeapons.Num(),
-		WeaponCoolTime[WeaponIndex], PData->FireInterval,
-		GlobalFireTimer, MinFireInterval, EnemiesInRange.Num(),
-		Target ? *Target->GetName() : TEXT("NULL"));
 
 	if (Target)
 	{
@@ -421,18 +409,12 @@ void AMainCharacter::FireWeapons(float DeltaSecond, int32 WeaponIndex)
 		const float EffectiveRange = PData->ProjectileRange;
 		if (EffectiveRange <= 0.f)
 		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("[FireWeapons] %s: ProjectileRange<=0 on %s"),
-				*Weapon->GetName(), *PData->GetName());
 			return;
 		}
 
 		const float Dist = FVector::Dist(GetActorLocation(), Target->GetActorLocation());
 		if (Dist > EffectiveRange)
 		{
-			UE_LOG(LogTemp, Verbose,
-				TEXT("[FireWeapons] OUT OF RANGE idx=%d Dist=%.1f > Eff=%.1f"),
-				WeaponIndex, Dist, EffectiveRange);
 			return;
 		}
 
@@ -646,10 +628,19 @@ class AActor* AMainCharacter::FindNearestEnemyInRange() const
 			BestDistSq = DistSq;
 			Nearest = TargetActor;
 		}
-		
+
 	}
 
 	return Nearest;
-	
+
+}
+
+void AMainCharacter::SetHovered_Implementation(bool bInHovered)
+{
+	// StaticMesh 버전만 실제 렌더링.
+	if (StaticHoverRingComponent)
+	{
+		StaticHoverRingComponent->SetHovered(bInHovered, TeamType);
+	}
 }
 

@@ -3,18 +3,22 @@
 
 #include "Widget/BVCityDetailWidget.h"
 
+#include "Blueprint/WidgetTree.h"
+#include "Buildings/BVBuildingBase.h"
 #include "Buildings/BVCityBase.h"
 #include "Characters/BVAutobotBase.h"
 #include "Components/Image.h"
+#include "Components/PanelWidget.h"
 #include "Components/ProgressBar.h"
 #include "Components/TextBlock.h"
 #include "Data/BVBuildingData.h"
 #include "Data/BVUnitData.h"
 #include "Headers/BVTeam.h"
+#include "Widget/BVConstructionMenuSlotWidget.h"
 
 namespace
 {
-	static void SetWidgetCollapsed(UWidget* W, bool bCollapsed)
+	static void SetCityWidgetCollapsed(UWidget* W, bool bCollapsed)
 	{
 		if (!W) return;
 		W->SetVisibility(bCollapsed ? ESlateVisibility::Collapsed : ESlateVisibility::Visible);
@@ -50,9 +54,14 @@ void UBVCityDetailWidget::SetFromCity(ABVCityBase* InCity)
 		if (CaptureProgressBar) CaptureProgressBar->SetPercent(0.f);
 		if (OwnerText)         OwnerText->SetText(FText::GetEmpty());
 		if (CaptureProgressText) CaptureProgressText->SetText(FText::GetEmpty());
-		SetWidgetCollapsed(SpawnUnitIconImage, true);
-		SetWidgetCollapsed(SpawnUnitNameText, true);
-		SetWidgetCollapsed(RespawnProgressBar, true);
+		SetCityWidgetCollapsed(SpawnUnitIconImage, true);
+		SetCityWidgetCollapsed(SpawnUnitNameText, true);
+		SetCityWidgetCollapsed(RespawnProgressBar, true);
+		if (BuildableContainer)
+		{
+			BuildableContainer->ClearChildren();
+			SetCityWidgetCollapsed(BuildableContainer, true);
+		}
 		return;
 	}
 
@@ -119,6 +128,9 @@ void UBVCityDetailWidget::SetFromCity(ABVCityBase* InCity)
 
 	// 현재 팀 기준으로 스폰 섹션 표시 여부 결정.
 	UpdateSpawnUnitVisibility();
+
+	// 도시별 건설 카탈로그 채우기 (Player 소유일 때만 보임).
+	RebuildBuildableCatalog();
 }
 
 void UBVCityDetailWidget::SetRespawnProgress(float Ratio)
@@ -181,8 +193,9 @@ void UBVCityDetailWidget::ApplyCaptureVisuals(float Progress)
 		CaptureProgressText->SetText(Label);
 	}
 
-	// 팀이 변경됐을 수 있으니 스폰 섹션 가시성도 재평가.
+	// 팀이 변경됐을 수 있으니 스폰 섹션 + 빌드 카탈로그 가시성 재평가.
 	UpdateSpawnUnitVisibility();
+	RebuildBuildableCatalog();
 }
 
 void UBVCityDetailWidget::UpdateSpawnUnitVisibility()
@@ -196,7 +209,46 @@ void UBVCityDetailWidget::UpdateSpawnUnitVisibility()
 		bShouldShow = true;
 	}
 
-	SetWidgetCollapsed(SpawnUnitIconImage, !bShouldShow);
-	SetWidgetCollapsed(SpawnUnitNameText, !bShouldShow);
-	SetWidgetCollapsed(RespawnProgressBar, !bShouldShow);
+	SetCityWidgetCollapsed(SpawnUnitIconImage, !bShouldShow);
+	SetCityWidgetCollapsed(SpawnUnitNameText, !bShouldShow);
+	SetCityWidgetCollapsed(RespawnProgressBar, !bShouldShow);
+}
+
+void UBVCityDetailWidget::RebuildBuildableCatalog()
+{
+	if (!BuildableContainer) return;
+
+	// 컨테이너는 매번 깨끗이 비운 뒤 다시 채움. (도시 전환/팀 전환 모두 동일 경로.)
+	BuildableContainer->ClearChildren();
+
+	ABVCityBase* City = BoundCity.Get();
+
+	// Player 소유 + 카탈로그 항목 존재 + 슬롯 클래스 지정 — 셋 다 만족할 때만 채움.
+	const bool bShouldShow =
+		City &&
+		City->TeamType == EBVTeam::Player &&
+		City->BuildableBuildings.Num() > 0 &&
+		CatalogEntryWidgetClass != nullptr;
+
+	SetCityWidgetCollapsed(BuildableContainer, !bShouldShow);
+	if (!bShouldShow) return;
+
+	for (const TSubclassOf<ABVBuildingBase>& BuildingClass : City->BuildableBuildings)
+	{
+		if (!BuildingClass) continue;
+
+		// CDO에서 BuildingData를 꺼내 슬롯 초기화. DA가 없는 클래스는 표시할 정보가 없으니 스킵.
+		const ABVBuildingBase* CDO = BuildingClass->GetDefaultObject<ABVBuildingBase>();
+		UBVBuildingData* SlotDA = CDO ? CDO->BuildingData : nullptr;
+		if (!SlotDA) continue;
+
+		// 변수명을 'Slot'으로 두면 UWidget::Slot 멤버를 가려서 C4458이 뜸 → SlotWidget으로.
+		UBVConstructionMenuSlotWidget* SlotWidget =
+			CreateWidget<UBVConstructionMenuSlotWidget>(this, CatalogEntryWidgetClass);
+		if (!SlotWidget) continue;
+
+		// City 컨텍스트 주입 — 클릭 시 EnterCityBuildMode로 라우팅됨.
+		SlotWidget->InitSlotForCity(SlotDA, City);
+		BuildableContainer->AddChild(SlotWidget);
+	}
 }

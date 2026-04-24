@@ -13,6 +13,7 @@
 #include "Widget/BVUnitNameWidget.h"
 #include "BVPlayerController.h"
 #include "Kismet/GameplayStatics.h"
+#include "Components/BVStaticHoverRingComponent.h"
 
 
 // Sets default values
@@ -27,7 +28,14 @@ ABVCharacterBase::ABVCharacterBase()
 	GetMesh()->SetRelativeLocationAndRotation(FVector(0.0f, 0.0f, -CapsuleHalfHeight), FRotator(0.0f, -90.0f, 0.0f));
 	GetMesh()->SetAnimationMode(EAnimationMode::AnimationBlueprint);
 	GetMesh()->SetCollisionProfileName(TEXT("Hoverable"));
-	
+	// 유닛이 다른 액터의 호버 링 데칼을 몸에 받지 않도록 차단.
+	GetMesh()->SetReceivesDecals(false);
+
+	// <------------ Hover Ring ------------>
+	// StaticMesh 기반 링. 캐릭터 Transform에 1:1 attach되어 잔상 없음.
+	StaticHoverRingComponent = CreateDefaultSubobject<UBVStaticHoverRingComponent>(TEXT("StaticHoverRingComponent"));
+	StaticHoverRingComponent->SetupAttachment(RootComponent);
+
 	// <------------ Widgets ------------>
 	// UnitNameWidget
 	/*
@@ -52,6 +60,27 @@ void ABVCharacterBase::BeginPlay()
 	UKismetSystemLibrary::ExecuteConsoleCommand(GetWorld(), TEXT("r.CustomDepthTemporalAAJitter 0"));
 
 	GetMesh()->SetCollisionProfileName(TEXT("Hoverable"));
+
+	// 스켈레탈 메시는 애니메이션으로 미묘하게 움직여서 커서 트레이스가 간헐적으로 놓침 → 호버 깜빡임.
+	// 캡슐도 MouseHover를 블록하게 해서 메시 애니메이션과 무관하게 안정적으로 잡히도록.
+	if (UCapsuleComponent* Cap = GetCapsuleComponent())
+	{
+		Cap->SetCollisionResponseToChannel(ECC_MouseHover, ECR_Block);
+	}
+
+	// 유닛 전체가 다른 호버 링 데칼을 받지 않도록 일괄 차단.
+	// (메인 메시 외에 무기/부착 메시가 있어도 커버. BP에서 우연히 켜진 경우도 덮어씀.)
+	TArray<UPrimitiveComponent*> AllPrims;
+	GetComponents<UPrimitiveComponent>(AllPrims);
+	for (UPrimitiveComponent* Prim : AllPrims)
+	{
+		if (Prim)
+		{
+			Prim->SetReceivesDecals(false);
+		}
+	}
+
+	// StaticHoverRingComponent의 크기/위치는 자체 BeginPlay에서 캡슐 기반으로 자동 계산됨.
 
 	/*
 	// Widget Setting
@@ -83,46 +112,10 @@ FGenericTeamId ABVCharacterBase::GetTeamId_Implementation() const
 void ABVCharacterBase::SetHovered_Implementation(bool bInHovered)
 {
 	bIsHovered = bInHovered;
-	if (USkeletalMeshComponent* CharacterMesh = GetMesh())
+	// StaticMesh 버전만 실제 렌더링. Decal 버전은 호출하지 않아 visibility=false 유지.
+	if (StaticHoverRingComponent)
 	{
-		uint8 Stencil = 0;
-
-		if (bIsHovered)
-		{
-
-			APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-			IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC);
-
-			if (TeamAgentPC)
-			{
-				ETeamAttitude::Type Attitude = TeamAgentPC->GetTeamAttitudeTowards((*this));
-				FString AttitudeStr = StaticEnum<ETeamAttitude::Type>()->GetValueAsString(Attitude);
-
-				switch (Attitude)
-				{
-				case ETeamAttitude::Friendly:
-					Stencil = 1;
-					break;
-				case ETeamAttitude::Hostile:
-					Stencil = 2;
-					break;
-				case ETeamAttitude::Neutral:
-					Stencil = 3;
-					break;
-				default:
-					Stencil = 0;
-					break;
-				}
-
-				//FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d, Attitude : %s"), *GetName(), Stencil, *AttitudeStr);
-				//GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
-			}
-
-		}
-		
-		CharacterMesh->SetRenderCustomDepth(bIsHovered);
-		CharacterMesh->SetCustomDepthStencilValue(Stencil);
-		
+		StaticHoverRingComponent->SetHovered(bInHovered, TeamType);
 	}
 }
 

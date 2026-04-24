@@ -10,14 +10,23 @@ class UWrapBox;
 class UBVConstructionMenuSlotWidget;
 class UDataTable;
 class UBVBuildingCatalog;
+class ABVCityBase;
 
 /**
- * 
+ *
  */
 UCLASS()
 class BRAIN_IN_A_VAT_API UBVConstructionMenuWidget : public UUserWidget
 {
 	GENERATED_BODY()
+
+public:
+	// 메뉴 슬롯을 재구성한다.
+	//   - InCity == nullptr → 글로벌 Hero 카탈로그 (BuildingCatalog / AvailableBuildingsData).
+	//   - InCity != nullptr → InCity->BuildableBuildings 기반. 슬롯 클릭 시 EnterCityBuildMode 경로로 라우팅.
+	// 위젯이 이미 열려 있는 상태에서도 호출 가능 (컨테이너를 먼저 비우고 다시 채움).
+	UFUNCTION(BlueprintCallable, Category = "Build")
+	void Populate(ABVCityBase* InCity);
 
 protected:
 	virtual void NativeConstruct() override;
@@ -35,4 +44,7 @@ protected:
 	// Deprecated: 이전 방식의 직접 배열. 카탈로그가 없을 때 fallback으로만 사용.
 	UPROPERTY(EditDefaultsOnly, Category = "Data")
 	TArray<TObjectPtr<class UBVBuildingData>> AvailableBuildingsData;
+
+	// 현재 바인딩된 도시 (City 패널 → B키로 진입한 경우). null이면 글로벌 Hero 모드.
+	TWeakObjectPtr<ABVCityBase> BoundCity;
 };

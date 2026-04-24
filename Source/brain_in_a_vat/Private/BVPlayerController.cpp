@@ -30,6 +30,8 @@
 #include "Widget/BVBuildingDetailWidget.h"
 #include "Widget/BVCaptureAnnouncementWidget.h"
 #include "Widget/BVCityDetailWidget.h"
+#include "Data/BVCityData.h"
+#include "Widget/BVConstructionMenuWidget.h"
 #include "Widget/BVUnitDetailWidget.h"
 #include "Widget/BVGoldPopupWidget.h"
 #include "Widget/BVInventoryWidget.h"
@@ -149,37 +151,7 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 		UpdateGhostLocation();
 	}
 
-	// Moving To Construction Site
-	if (bIsMovingToBuild)
-	{
-		if (HeroCharacter)
-		{
-			float Distance = FVector::Dist2D(HeroCharacter->GetActorLocation(), TargetBuildLocation);
-
-			if (Distance <= StartToBuildRange)
-			{
-				// Stop HeroCharacter's movement
-				if (AController* HeroController = HeroCharacter->GetController())
-				{
-					HeroController->StopMovement();
-				}
-
-				if (PendingBuildingClass)
-				{
-					HeroCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass, PendingConstructionTime);
-				}
-
-				if (CurrentGhostActor)
-				{
-					CurrentGhostActor->Destroy();
-					CurrentGhostActor = nullptr;
-				}
-
-				bIsMovingToBuild = false;
-				PendingBuildingClass = nullptr;
-			}
-		}
-	}
+	// Hero-주도 건설 경로(현장 이동 후 착공)는 City-only 빌드로 전환되며 제거됨.
 
 	// Mouse Hovering
 	FHitResult Hit;
@@ -198,7 +170,10 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 			return false;
 		};
 
-		if (HoveredObject && HoveredObject != DetailBuilding.Get() && !IsBoxSelected(HoveredObject))
+		if (HoveredObject &&
+			HoveredObject != DetailBuilding.Get() &&
+			HoveredObject != SelectedHero.Get() &&
+			!IsBoxSelected(HoveredObject))
 		{
 			if (HoveredObject->Implements<UBVDamageableInterface>())
 			{
@@ -353,7 +328,20 @@ void ABVPlayerController::SetupInputComponent()
 			{
 				EnhancedInputComponent->BindAction(FocusLastCombatAction, ETriggerEvent::Started, this, &ABVPlayerController::OnFocusLastCombatPressed);
 			}
-			
+
+			// Hero 강제 선택 (Space 등)
+			if (SelectHeroAction)
+			{
+				EnhancedInputComponent->BindAction(SelectHeroAction, ETriggerEvent::Started, this, &ABVPlayerController::OnSelectHeroPressed);
+			}
+
+			// 내 소유 첫 거점으로 카메라 Jump (1)
+			if (FocusFirstCityAction)
+			{
+				EnhancedInputComponent->BindAction(FocusFirstCityAction, ETriggerEvent::Started, this, &ABVPlayerController::OnFocusFirstCityPressed);
+			}
+
+
 			// [Normal Mode]
 			if (MoveAction)
 			{
@@ -427,14 +415,13 @@ void ABVPlayerController::ToggleOverheadWidgets()
 
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 {
-	// 우클릭 = 선택 해제 (건물/유닛 패널 닫기)
+	// 우클릭 = 상세 패널 닫기 (상시 실행).
 	HideBuildingDetail();
 	HideUnitDetail();
 
-	if (bIsMovingToBuild || bIsConstructionMode)
+	if (bIsConstructionMode)
 	{
-		// Cancel the construction if the player was going to the construction site
-		bIsMovingToBuild = false;
+		// 우클릭으로 건설 모드 취소 (유령 건물/데칼 정리는 ExitConstructionMode가 일괄 처리).
 		bIsConstructionMode = false;
 		PendingBuildingClass = nullptr;
 
@@ -446,20 +433,18 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 			CurrentGhostActor = nullptr;
 		}
 	}
-	
+
+	// Hero 이동은 Hero가 '선택된' 상태일 때만 수행. 선택 없으면 우클릭은 패널 닫기 전용.
+	AMainCharacter* MoveHero = SelectedHero.Get();
+	if (!MoveHero) return;
+
 	FHitResult Hit;
 	if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 	{
 		const FVector DestLocation = Hit.ImpactPoint;
-		if (HeroCharacter)
+		if (AController* HeroController = MoveHero->GetController())
 		{
-			DrawDebugSphere(GetWorld(), DestLocation, 25.0f, 12, FColor::Red, false, 1.0f);
-			
-			// HeroCharacter의 컨트롤러(AI Controller)를 가져와 이동 명령을 내립니다.
-			if (AController* HeroController = HeroCharacter->GetController())
-			{
-				UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, DestLocation);
-			}
+			UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, DestLocation);
 		}
 	}
 }
@@ -476,8 +461,6 @@ void ABVPlayerController::SelectObject()
 
 		if (SelectedActor)
 		{
-			UE_LOG(LogTemp, Log, TEXT("Selected: %s"), *SelectedActor->GetName())
-
 			ABVNPCBase* ClickedNPC = Cast<ABVNPCBase>(SelectedActor);
 			if (ClickedNPC)
 			{
@@ -494,22 +477,38 @@ void ABVPlayerController::SelectObject()
 				}
 			}
 
-			// 건물 클릭 시 상세 패널 토글 (같은 건물이면 닫기, 다른 건물이면 전환)
-			if (ABVBuildingBase* ClickedBuilding = Cast<ABVBuildingBase>(SelectedActor))
+			// Hero(플레이어 캐릭터) 클릭: 선택 상태로 전환해 아래에 HoverRing 유지.
+			if (AMainCharacter* ClickedHero = Cast<AMainCharacter>(SelectedActor))
 			{
+				HideBuildingDetail();
 				HideUnitDetail();
+				SetHeroSelected(ClickedHero);
+			}
+			// 건물 클릭: 첫 클릭은 패널 열기/전환, 같은 건물 재클릭은 카메라 점프.
+			// (닫기는 우클릭 전담.)
+			else if (ABVBuildingBase* ClickedBuilding = Cast<ABVBuildingBase>(SelectedActor))
+			{
+				ClearHeroSelection();
+				HideUnitDetail();
+
 				if (DetailBuilding.Get() == ClickedBuilding)
 				{
-					HideBuildingDetail();
+					// 이미 이 건물의 패널이 열려 있으면 카메라만 그 건물로 점프.
+					if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+					{
+						CamPawn->JumpToLocation(ClickedBuilding->GetActorLocation());
+					}
 				}
 				else
 				{
+					// 처음 열거나 다른 건물로 전환.
 					ShowBuildingDetail(ClickedBuilding);
 				}
 			}
 			// 유닛 클릭 시 상세 패널 토글
 			else if (ABVAutobotBase* ClickedUnit = Cast<ABVAutobotBase>(SelectedActor))
 			{
+				ClearHeroSelection();
 				HideBuildingDetail();
 				if (DetailUnit.Get() == ClickedUnit)
 				{
@@ -522,17 +521,53 @@ void ABVPlayerController::SelectObject()
 			}
 			else
 			{
+				ClearHeroSelection();
 				HideBuildingDetail();
 				HideUnitDetail();
 			}
 		}
 		else
 		{
-			// 빈 공간 클릭 -> 상세 패널 닫기
+			// 빈 공간 클릭 -> 선택/상세 패널 모두 해제
+			ClearHeroSelection();
 			HideBuildingDetail();
 			HideUnitDetail();
 		}
 	}
+}
+
+void ABVPlayerController::SetHeroSelected(AMainCharacter* Hero)
+{
+	// 이전 Hero가 다른 Hero였다면 hover 해제 (현재 커서 위에 있지 않은 경우에만).
+	if (AMainCharacter* Prev = SelectedHero.Get())
+	{
+		if (Prev != Hero && Prev != HoveredObject)
+		{
+			if (Prev->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(Prev, false);
+			}
+		}
+	}
+
+	SelectedHero = Hero;
+
+	if (Hero && Hero->Implements<UBVDamageableInterface>())
+	{
+		IBVDamageableInterface::Execute_SetHovered(Hero, true);
+	}
+}
+
+void ABVPlayerController::ClearHeroSelection()
+{
+	if (AMainCharacter* Prev = SelectedHero.Get())
+	{
+		if (Prev != HoveredObject && Prev->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(Prev, false);
+		}
+	}
+	SelectedHero = nullptr;
 }
 
 void ABVPlayerController::OnBuildKeyPressed()
@@ -540,11 +575,23 @@ void ABVPlayerController::OnBuildKeyPressed()
 	if (bIsConstructionMode)
 	{
 		ExitConstructionMode();
+		return;
 	}
-	else
+
+	// City-only 빌드: City Detail 패널이 열려서 도시를 보여줄 때만 B키가 먹힌다.
+	// 도시가 아닌 상태에서는 B키 무시 (Hero 주도 글로벌 빌드 경로는 제거됨).
+	ABVCityBase* ContextCity = nullptr;
+	if (CityDetailWidget && CityDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
-		ToggleConstructionMenuUI();
+		ContextCity = Cast<ABVCityBase>(DetailBuilding.Get());
 	}
+
+	if (!ContextCity)
+	{
+		return;
+	}
+
+	ToggleConstructionMenuUI(ContextCity);
 }
 
 void ABVPlayerController::ToggleInventoryUI()
@@ -587,7 +634,7 @@ void ABVPlayerController::ToggleInventoryUI()
 	}
 }
 
-void ABVPlayerController::ToggleConstructionMenuUI()
+void ABVPlayerController::ToggleConstructionMenuUI(ABVCityBase* ContextCity)
 {
 
 	if (!ConstructionMenuWidget && ConstructionMenuWidgetClass)
@@ -596,7 +643,7 @@ void ABVPlayerController::ToggleConstructionMenuUI()
 		if (ConstructionMenuWidget)
 		{
 			ConstructionMenuWidget->AddToViewport();
-			ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden); 
+			ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 
@@ -605,7 +652,7 @@ void ABVPlayerController::ToggleConstructionMenuUI()
 	if (ConstructionMenuWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		ConstructionMenuWidget->SetVisibility(ESlateVisibility::Hidden);
-		
+
 		FInputModeGameAndUI InputMode;
 		InputMode.SetHideCursorDuringCapture(false);
 		InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
@@ -615,8 +662,15 @@ void ABVPlayerController::ToggleConstructionMenuUI()
 	{
 		CloseCurrentUI();
 
+		// 도시 컨텍스트면 도시의 BuildableBuildings로, 아니면 글로벌 Hero 카탈로그로 재구성.
+		// NativeConstruct는 최초 1회 오픈 시 글로벌로 이미 채우지만, 도시 전환/재오픈 대비 매 토글마다 호출.
+		if (UBVConstructionMenuWidget* MenuW = Cast<UBVConstructionMenuWidget>(ConstructionMenuWidget))
+		{
+			MenuW->Populate(ContextCity);
+		}
+
 		ConstructionMenuWidget->SetVisibility(ESlateVisibility::Visible);
-		
+
 		FInputModeGameAndUI InputMode;
 		InputMode.SetWidgetToFocus(ConstructionMenuWidget->TakeWidget());
 		SetInputMode(InputMode);
@@ -670,9 +724,24 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 	}
 
 	// 거점(City)과 일반 건물은 서로 다른 디테일 위젯 사용.
-	// 단, CityDetailWidgetClass가 비어 있으면 기존 BuildingDetailWidget으로 폴백.
+	// City 패널 클래스 결정: DA의 CityDetailWidgetClass 우선, 비어있으면 PC 폴백.
+	// 둘 다 비어있으면 기존 BuildingDetailWidget으로 자연 폴백.
 	ABVCityBase* City = Cast<ABVCityBase>(InBuilding);
-	const bool bUseCityWidget = (City != nullptr) && (CityDetailWidgetClass != nullptr);
+
+	TSubclassOf<UUserWidget> EffectiveCityWidgetClass = nullptr;
+	if (City)
+	{
+		if (const UBVCityData* CityData = Cast<UBVCityData>(City->BuildingData))
+		{
+			EffectiveCityWidgetClass = CityData->CityDetailWidgetClass;
+		}
+		if (!EffectiveCityWidgetClass) // DA 슬롯 비었으면 PC 폴백
+		{
+			EffectiveCityWidgetClass = CityDetailWidgetClass;
+		}
+	}
+
+	const bool bUseCityWidget = (City != nullptr) && (EffectiveCityWidgetClass != nullptr);
 
 	// 반대편 위젯은 숨김.
 	if (bUseCityWidget)
@@ -689,9 +758,16 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 
 	if (bUseCityWidget)
 	{
+		// 캐시 클래스가 다르면(다른 도시가 다른 패널 쓰는 경우) 폐기 후 재생성.
+		if (CityDetailWidget && CityDetailWidget->GetClass() != EffectiveCityWidgetClass)
+		{
+			CityDetailWidget->RemoveFromParent();
+			CityDetailWidget = nullptr;
+		}
+
 		if (!CityDetailWidget)
 		{
-			CityDetailWidget = CreateWidget<UUserWidget>(this, CityDetailWidgetClass);
+			CityDetailWidget = CreateWidget<UUserWidget>(this, EffectiveCityWidgetClass);
 			if (CityDetailWidget)
 			{
 				CityDetailWidget->AddToViewport();
@@ -716,8 +792,6 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 
 	if (!TargetWidget)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("[ShowBuildingDetail] No detail widget available. Check BP_PlayerController's BuildingDetailWidgetClass / CityDetailWidgetClass."));
 		return;
 	}
 
@@ -788,8 +862,6 @@ void ABVPlayerController::ShowCaptureAnnouncement(const FText& Message)
 {
 	if (!CaptureAnnouncementWidgetClass)
 	{
-		UE_LOG(LogTemp, Warning,
-			TEXT("[ShowCaptureAnnouncement] CaptureAnnouncementWidgetClass not set on PlayerController."));
 		return;
 	}
 
@@ -903,54 +975,54 @@ void ABVPlayerController::HideUnitDetail()
 void ABVPlayerController::OnBuildClick()
 {
 	// This function is called under Build IMC
-	if (bCanBuild && CurrentGhostActor)
+
+	// 슬롯 클릭으로 막 빌드 모드에 진입한 직후(수십 ms 이내)에 흘러들어오는 유령 입력만 차단.
+	// 사용자의 실제 다음 클릭은 반드시 이 창을 넘긴다.
+	if (BuildModeEnterTime > 0.0 && GetWorld())
 	{
-		PendingBuildingClass = CurrentBuildingClass;
-		TargetBuildLocation = CurrentGhostActor->GetActorLocation();
-
-		float BuildingRadius = 50.0f; 
-		FVector Origin, Extent;
-		CurrentGhostActor->GetActorBounds(false, Origin, Extent);
-		BuildingRadius = FMath::Max(Extent.X, Extent.Y);
-
-		float CharacterRadius = 42.0f;
-		if (HeroCharacter)
+		const double Elapsed = GetWorld()->GetTimeSeconds() - BuildModeEnterTime;
+		if (Elapsed < BuildClickInputIgnoreWindow)
 		{
-			if (UCapsuleComponent* Capsule = HeroCharacter->GetCapsuleComponent())
-			{
-				CharacterRadius = Capsule->GetScaledCapsuleRadius();
-			}
+			return;
 		}
-
-		StartToBuildRange = BuildingRadius + CharacterRadius + 100.0f; // Padding
-
-		
-		// Moving to construction site
-		bIsMovingToBuild = true;
-		if (HeroCharacter)
-		{
-			if (AController* HeroController = HeroCharacter->GetController())
-			{
-				UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, TargetBuildLocation);
-			}
-		}
-		bIsConstructionMode = false;
-
-		if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
-		{
-			if (BuildMappingContext)
-			{
-				Subsystem->RemoveMappingContext(BuildMappingContext);
-			}
-		}
-
-		PlayAnnouncerVoice(EBVAnnouncerEvent::ConstructionStarted);
 	}
-	else
+
+	if (!bCanBuild || !CurrentGhostActor)
 	{
 		// TODO : Can't Build there
+		return;
 	}
-	
+
+	// City-only 빌드 흐름: CurrentBuildCity가 살아있어야만 착공.
+	// (Hero 이동 경로는 제거됨. 도시가 자체 자원/타이머로 건설하는 컨셉.)
+	ABVCityBase* BuildCity = CurrentBuildCity.Get();
+	if (!BuildCity || !HeroCharacter || !CurrentBuildingClass)
+	{
+		ExitConstructionMode();
+		return;
+	}
+
+	PendingBuildingClass = CurrentBuildingClass;
+	TargetBuildLocation = CurrentGhostActor->GetActorLocation();
+
+	// HeroCharacter::ConstructBuilding은 SpawnActor로 ConstructionSite를 만드는 함수.
+	// 이름은 Hero지만 실제로 Hero 위치/이동과 무관한 '월드에 착공'용으로 재사용.
+	HeroCharacter->ConstructBuilding(TargetBuildLocation, PendingBuildingClass, PendingConstructionTime);
+
+	PlayAnnouncerVoice(EBVAnnouncerEvent::ConstructionStarted);
+
+	// 데칼/IMC/ghost 정리는 ExitConstructionMode로 일괄 처리.
+	PendingBuildingClass = nullptr;
+
+	// ExitConstructionMode가 CurrentBuildCity를 리셋하므로, 재선택용으로 먼저 저장.
+	ABVCityBase* CityToReSelect = BuildCity;
+	ExitConstructionMode();
+
+	// 착공 후 거점 선택(Detail 패널 + hover ring)을 유지.
+	if (CityToReSelect)
+	{
+		ShowBuildingDetail(CityToReSelect);
+	}
 }
 
 void ABVPlayerController::OnCameraZoom(const FInputActionValue& Value)
@@ -980,31 +1052,69 @@ void ABVPlayerController::OnCameraCenterPressed()
 
 void ABVPlayerController::OnFocusLastCombatPressed()
 {
-	UE_LOG(LogTemp, Warning, TEXT("[Camera] FocusLastCombat pressed. bHasLastCombatLocation=%d, Loc=%s"),
-		bHasLastCombatLocation ? 1 : 0, *LastCombatLocation.ToString());
-
 	if (!bHasLastCombatLocation)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Camera] FocusLastCombat: 아직 기록된 전투 위치가 없습니다."));
 		return;
 	}
 
 	ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn());
 	if (!CamPawn)
 	{
-		UE_LOG(LogTemp, Warning, TEXT("[Camera] FocusLastCombat: GetPawn()이 ABVRTSCameraPawn이 아님 (Pawn=%s)"),
-			GetPawn() ? *GetPawn()->GetName() : TEXT("NULL"));
 		return;
 	}
 
 	CamPawn->JumpToLocation(LastCombatLocation);
 }
 
+void ABVPlayerController::OnSelectHeroPressed()
+{
+	UE_LOG(LogTemp, Warning, TEXT("[SelectHero] pressed. HeroCharacter=%s"), *GetNameSafe(HeroCharacter));
+	// HeroCharacter 자동 선택 + 카메라를 Hero follow 모드로 진입.
+	if (!HeroCharacter) return;
+
+	HideBuildingDetail();
+	HideUnitDetail();
+	SetHeroSelected(HeroCharacter);
+
+	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+	{
+		CamPawn->CenterOnActor(HeroCharacter);
+	}
+}
+
+void ABVPlayerController::OnFocusFirstCityPressed()
+{
+	// 내 팀 소유 거점 중 첫 번째(TActorIterator 순서)에 카메라 Jump.
+	const FGenericTeamId MyTeamId = GetGenericTeamId();
+	ABVCityBase* FirstOwnedCity = nullptr;
+	for (TActorIterator<ABVCityBase> It(GetWorld()); It; ++It)
+	{
+		ABVCityBase* City = *It;
+		if (!City) continue;
+		if (City->GetGenericTeamId() == MyTeamId)
+		{
+			FirstOwnedCity = City;
+			break;
+		}
+	}
+
+	if (!FirstOwnedCity) return;
+
+	// 거점 자동 선택 (Detail 패널 표시) + 다른 선택 상태 해제.
+	ClearHeroSelection();
+	HideUnitDetail();
+	ShowBuildingDetail(FirstOwnedCity);
+
+	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+	{
+		CamPawn->JumpToLocation(FirstOwnedCity->GetActorLocation());
+	}
+}
+
 void ABVPlayerController::ReportCombatLocation(const FVector& WorldLocation)
 {
 	LastCombatLocation = WorldLocation;
 	bHasLastCombatLocation = true;
-	UE_LOG(LogTemp, Verbose, TEXT("[Camera] ReportCombatLocation: %s"), *WorldLocation.ToString());
 }
 
 void ABVPlayerController::UpdateFogOfWar()
@@ -1037,6 +1147,26 @@ void ABVPlayerController::UpdateFogOfWar()
 		if (It->GetGenericTeamId() == GetGenericTeamId() && !It->bIsDead)
 		{
 			VisionProviders.Add({*It, It->VisionRadius});
+		}
+	}
+
+	// City discovery: 아직 발견되지 않은 도시가 아군 시야 반경에 들어오면 1회 발견 처리.
+	// MarkDiscoveredByPlayer 내부에서 중복 가드 + 공지/델리게이트까지 처리하므로 여기선 호출만.
+	for (TActorIterator<ABVCityBase> It(GetWorld()); It; ++It)
+	{
+		ABVCityBase* City = *It;
+		if (!City || City->bDiscoveredByPlayer) continue;
+
+		const FVector CityLoc = City->GetActorLocation();
+		for (const FVisionTarget& Provider : VisionProviders)
+		{
+			if (!Provider.TargetActor) continue;
+			const float Dist = FVector::Distance(CityLoc, Provider.TargetActor->GetActorLocation());
+			if (Dist <= Provider.Radius)
+			{
+				City->MarkDiscoveredByPlayer();
+				break;
+			}
 		}
 	}
 
@@ -1241,12 +1371,57 @@ void ABVPlayerController::EnterConstructionMode(TSubclassOf<ABVBuildingBase> InB
 			}
 		}
 	}
-	
+
+	// 슬롯 좌클릭으로 진입한 경우 같은 마우스 이벤트가 Build IMC로 흘러들어 즉시 착공되는 걸 방지.
+	// 시간 창(BuildClickInputIgnoreWindow) 이내의 OnBuildClick만 무시 — 사용자의 실제 다음 클릭은 통과.
+	BuildModeEnterTime = GetWorld() ? GetWorld()->GetTimeSeconds() : -1.0;
+}
+
+void ABVPlayerController::EnterCityBuildMode(ABVCityBase* City, TSubclassOf<ABVBuildingBase> InBuildingClass, float InConstructionTime)
+{
+	// City-only 빌드: City가 없으면 빌드 진입 자체를 거부. (Hero 경로는 제거됨.)
+	if (!City)
+	{
+		return;
+	}
+
+	// (선택 가드) 해당 도시가 BuildableBuildings에 이 클래스를 갖고 있어야 빌드 허용.
+	// 패널 UI에서 이미 필터링되겠지만, 콘솔/스크립트 호출 대비.
+	if (City->BuildableBuildings.Num() > 0 && !City->BuildableBuildings.Contains(InBuildingClass))
+	{
+		return;
+	}
+
+	// 기존 ghost/IMC 셋업을 그대로 재사용 (즉시-건설 분기는 OnBuildClick에서 처리).
+	EnterConstructionMode(InBuildingClass, InConstructionTime);
+
+	// 셋업이 성공해 빌드 모드가 켜진 경우에만 도시 상태/데칼을 활성화.
+	if (bIsConstructionMode)
+	{
+		CurrentBuildCity = City;
+		City->SetBuildRadiusVisualVisible(true);
+
+		// ghost 배치 모드 동안에도 거점 선택 상태(DetailBuilding + hover ring)는 유지하되,
+		// 패널 자체는 잠시 숨김 (화면 가림 방지). 착공/취소 후 다시 표시됨.
+		ShowBuildingDetail(City);
+		if (CityDetailWidget)
+		{
+			CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+		}
+	}
 }
 
 void ABVPlayerController::ExitConstructionMode()
 {
 	bIsConstructionMode = false;
+	BuildModeEnterTime = -1.0;
+
+	// City build mode 였으면 반경 데칼을 끄고 도시 참조를 해제.
+	if (ABVCityBase* City = CurrentBuildCity.Get())
+	{
+		City->SetBuildRadiusVisualVisible(false);
+	}
+	CurrentBuildCity.Reset();
 
 	// Switch to Normal IMC
 	if (UEnhancedInputLocalPlayerSubsystem* Subsystem = ULocalPlayer::GetSubsystem<UEnhancedInputLocalPlayerSubsystem>(GetLocalPlayer()))
@@ -1277,9 +1452,15 @@ void ABVPlayerController::UpdateGhostLocation()
 		FVector TargetLoc = Hit.ImpactPoint;
 		CurrentGhostActor->SetActorLocation(TargetLoc);
 
-		// TODO : Construction validation
-		
-		bCanBuild = true;
+		// 기본은 항상 build 가능. City 빌드 모드면 도시 반경 안일 때만 허용.
+		bool bAllowed = true;
+		if (ABVCityBase* City = CurrentBuildCity.Get())
+		{
+			bAllowed = City->IsLocationWithinBuildRadius(TargetLoc);
+		}
+
+		// TODO : 추가 검증 (충돌, 슬로프 등)
+		bCanBuild = bAllowed;
 		CurrentGhostActor->SetValid(bCanBuild);
 	}
 }
@@ -1417,24 +1598,32 @@ void ABVPlayerController::OnSelectReleased()
 
 	if (bWasDrag)
 	{
-		// 박스 셀렉션에 정확히 1개만 걸렸으면 해당 상세 패널 표시
+		// 박스 셀렉션에 정확히 1개만 걸렸으면 해당 대상을 선택 처리.
 		if (BoxSelectedActors.Num() == 1)
 		{
 			AActor* OnlyActor = BoxSelectedActors[0].Get();
-			if (ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OnlyActor))
+			if (AMainCharacter* Hero = Cast<AMainCharacter>(OnlyActor))
 			{
+				HideBuildingDetail();
+				HideUnitDetail();
+				SetHeroSelected(Hero);
+			}
+			else if (ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OnlyActor))
+			{
+				ClearHeroSelection();
 				HideBuildingDetail();
 				ShowUnitDetail(Unit);
 			}
 			else if (ABVBuildingBase* Building = Cast<ABVBuildingBase>(OnlyActor))
 			{
+				ClearHeroSelection();
 				HideUnitDetail();
 				ShowBuildingDetail(Building);
 			}
 		}
 		else
 		{
-			// 여러 개 선택 → 기존 상세 패널 닫기
+			// 여러 개 선택 → 기존 상세 패널 닫기 (Hero 선택은 유지).
 			HideBuildingDetail();
 			HideUnitDetail();
 		}
@@ -1501,6 +1690,10 @@ void ABVPlayerController::UpdateBoxHover()
 	{
 		TestAndAdd(*It);
 	}
+	for (TActorIterator<AMainCharacter> It(World); It; ++It)
+	{
+		TestAndAdd(*It);
+	}
 
 	// 이전 박스에 있었지만 이번엔 빠진 액터 → un-hover
 	for (const TWeakObjectPtr<AActor>& Old : BoxSelectedActors)
@@ -1515,7 +1708,9 @@ void ABVPlayerController::UpdateBoxHover()
 		}
 		if (!bStillIn)
 		{
-			if (OldActor != HoveredObject && OldActor != DetailBuilding.Get())
+			if (OldActor != HoveredObject &&
+				OldActor != DetailBuilding.Get() &&
+				OldActor != SelectedHero.Get())
 			{
 				if (OldActor->Implements<UBVDamageableInterface>())
 				{
@@ -1548,6 +1743,7 @@ void ABVPlayerController::ClearBoxSelection()
 		if (!A) continue;
 		if (A == HoveredObject) continue;
 		if (A == DetailBuilding.Get()) continue;
+		if (A == SelectedHero.Get()) continue;
 		if (A->Implements<UBVDamageableInterface>())
 		{
 			IBVDamageableInterface::Execute_SetHovered(A, false);

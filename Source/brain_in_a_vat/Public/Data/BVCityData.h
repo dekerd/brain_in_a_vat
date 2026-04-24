@@ -2,9 +2,13 @@
 
 #include "CoreMinimal.h"
 #include "Data/BVBuildingData.h"
+#include "Headers/BVTeam.h"
 #include "BVCityData.generated.h"
 
 class UNiagaraSystem;
+class ABVBuildingBase;
+class UMaterialInterface;
+class UUserWidget;
 
 /**
  * ABVCityBase 전용 DataAsset.
@@ -17,14 +21,42 @@ class BRAIN_IN_A_VAT_API UBVCityData : public UBVBuildingData
 	GENERATED_BODY()
 
 public:
-	// true면 레벨 시작 시 Building DA의 TeamType을 무시하고 Neutral로 강제 시작.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City")
-	bool bStartsNeutral = true;
+	// 레벨 시작 시 거점의 초기 소유 팀은 부모 UBVBuildingData의 "Team" 카테고리에 있는
+	// TeamType 필드를 그대로 사용한다.
+	// Neutral = 점령 안 된 상태로 시작 (CaptureProgress=0).
+	// Player/Enemy = 해당 팀이 풀 점령된 상태로 시작 (CaptureProgress=±1, 즉시 스폰 시작).
 
 	// 점령 후 무적 시간(초). 0 이하면 무적 없음 (연타 재점령 방지용 여유).
 	// NOTE: 로직은 아직 미구현. DA 슬롯만 먼저 준비.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City", meta = (ClampMin = "0.0"))
 	float PostCaptureInvulnSeconds = 0.f;
+
+	// 이 거점을 클릭했을 때 띄울 상세 패널 위젯 클래스 (도시별 패널을 다르게 쓰고 싶을 때).
+	// 비워두면 PlayerController의 CityDetailWidgetClass를 폴백으로 사용한다.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|UI")
+	TSubclassOf<UUserWidget> CityDetailWidgetClass;
+
+	// ─── Build / Garrison ────────────────────────────────────
+	// 도시 중심에서 이 반경 안에만 건물을 지을 수 있다 (cm). 데칼/검사 둘 다 이 값 사용.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|Build", meta = (ClampMin = "100.0"))
+	float BuildRadius = 1500.f;
+
+	// 이 도시에서 건설 가능한 건물 클래스 목록. City 패널의 건설 카탈로그가 이 리스트로 채워짐.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|Build")
+	TArray<TSubclassOf<ABVBuildingBase>> BuildableBuildings;
+
+	// 빌드 모드 진입 시 도시 바닥에 표시할 반경 데칼 머티리얼 (없으면 데칼 안 띄움).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|Build")
+	TSoftObjectPtr<UMaterialInterface> BuildRadiusDecalMaterial;
+
+	// 도시에 주둔 가능한 최대 유닛 수. 도달하면 도시 내 생산 건물의 스폰이 일시정지.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|Garrison", meta = (ClampMin = "1"))
+	int32 MaxGarrison = 20;
+
+	// 자동 출격 임계값. 게리슨이 이 수 이상 + DispatchTargetCity가 지정되면 통째로 출격.
+	// 0 이하면 자동 출격 비활성 (수동 출격만).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|Garrison", meta = (ClampMin = "0"))
+	int32 DispatchThreshold = 5;
 
 	// NOTE: 점령 진행도 풀 점령(±1)까지 필요한 누적 데미지 총량은
 	// 상속받은 UBVBuildingData.MaxHealth 값을 그대로 사용한다.

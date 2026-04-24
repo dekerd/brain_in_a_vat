@@ -20,6 +20,8 @@ ABVBuildingGhost::ABVBuildingGhost()
 	MeshComponent->SetCollisionEnabled(ECollisionEnabled::NoCollision);
 
 	MeshComponent->SetCastShadow(false);
+	// ghost는 빌드 반경 데칼이 덮지 않도록 차단.
+	MeshComponent->SetReceivesDecals(false);
 }
 
 void ABVBuildingGhost::InitGhost(UStaticMesh* InMesh, UMaterialInterface* InGhostMaterial)

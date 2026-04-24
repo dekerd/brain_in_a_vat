@@ -6,10 +6,14 @@
 #include "AbilitySystemComponent.h"
 #include "BVPlayerController.h"
 #include "Characters/BVAutobotBase.h"
+#include "Components/BoxComponent.h"
+#include "Components/DecalComponent.h"
 #include "Components/WidgetComponent.h"
 #include "Data/BVCityData.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Kismet/GameplayStatics.h"
+#include "Materials/MaterialInstanceDynamic.h"
+#include "Materials/MaterialInterface.h"
 #include "NiagaraComponent.h"
 #include "NiagaraSystem.h"
 #include "Widget/BVCityCaptureWidget.h"
@@ -59,6 +63,21 @@ ABVCityBase::ABVCityBase()
 	BottomVFXComponent->SetRelativeLocation(FVector::ZeroVector); // 메시 바닥 중앙 = (0,0,0)
 	BottomVFXComponent->SetRelativeScale3D(FVector(1.f));
 	BottomVFXComponent->SetAutoActivate(false); // 팀이 정해지기 전엔 재생 안 함
+
+	// 빌드 반경 데칼 — 평소엔 숨김. 빌드 모드 진입 시 SetBuildRadiusVisualVisible(true)로 토글.
+	// DecalSize는 BeginPlay에서 DA의 BuildRadius를 읽고 (BuildRadius, BuildRadius, ThinDepth)로 세팅.
+	// -90 pitch = 데칼이 아래(지면) 방향으로 투사.
+	BuildRadiusDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("BuildRadiusDecal"));
+	BuildRadiusDecal->SetupAttachment(RootComponent);
+	// 부모(도시 액터)의 Scale3D를 무시한다. 도시 메시를 키우기 위해 액터 Scale을 수정해도
+	// 빌드 반경은 DA의 BuildRadius(월드 cm)로만 결정되도록 absolute scale 사용.
+	// Location/Rotation은 정상 상속되어 도시 위치/yaw는 그대로 따라간다.
+	BuildRadiusDecal->SetUsingAbsoluteScale(true);
+	BuildRadiusDecal->SetRelativeRotation(FRotator(-90.f, 0.f, 0.f));
+	BuildRadiusDecal->SetRelativeLocation(FVector::ZeroVector);
+	BuildRadiusDecal->DecalSize = FVector(64.f, 1500.f, 1500.f); // BeginPlay에서 덮어씀
+	BuildRadiusDecal->SetVisibility(false);
+	BuildRadiusDecal->SetHiddenInGame(true);
 }
 
 const UBVCityData* ABVCityBase::GetCityData() const
@@ -71,7 +90,6 @@ void ABVCityBase::BeginPlay()
 	// City 전용 세팅을 DA에서 먼저 로드.
 	if (const UBVCityData* CityData = GetCityData())
 	{
-		bStartsNeutral = CityData->bStartsNeutral;
 		PostCaptureInvulnSeconds = CityData->PostCaptureInvulnSeconds;
 
 		// 팀별 emission 색 DA에서 읽기 (DA 없으면 클래스 기본값 유지).
@@ -86,6 +104,44 @@ void ABVCityBase::BeginPlay()
 		BottomVFXOffset        = CityData->BottomVFXOffset;
 		BottomVFXDuration      = CityData->BottomVFXDuration;
 		BottomVFXPlayRate      = CityData->BottomVFXPlayRate;
+
+		// Build / Garrison 미러링.
+		BuildRadius         = CityData->BuildRadius;
+		BuildableBuildings  = CityData->BuildableBuildings;
+		MaxGarrison         = CityData->MaxGarrison;
+		DispatchThreshold   = CityData->DispatchThreshold;
+
+		// 빌드 반경 데칼: 사이즈는 DA의 BuildRadius로 (X=Y=반경; -90 pitch 회전 기준 X가 깊이),
+		// 머티리얼은 DA에서 지정된 것을 동기 로드 후 MID로 래핑.
+		// -90 pitch 후의 데칼 박스 표기: X=투사 깊이, Y/Z=가로/세로 반경.
+		if (BuildRadiusDecal)
+		{
+			constexpr float DecalProjectionDepth = 256.f; // 지면 굴곡 흡수용 여유 깊이.
+
+			// 월드 스케일을 강제로 (1,1,1)로 박는다. SetUsingAbsoluteScale 방식은 BP의
+			// RelativeScale3D가 (10,10,10)으로 저장돼 있으면 여전히 월드 10x가 나와서 실패.
+			// SetWorldScale3D는 parent world scale을 역산해서 RelativeScale3D를 조정하므로
+			// BP override와 무관하게 월드 기준 스케일이 확정된다.
+			BuildRadiusDecal->SetWorldScale3D(FVector(1.f));
+
+			// DecalSize.Y/Z는 박스의 half-extent (cm). 박스 full 한 변 = 2*BuildRadius.
+			// 머티리얼의 TexCoord[0]는 이 박스 투사면을 [0,1]로 정규화한 값이므로,
+			// ConstantBiasScale로 [-1,1] 변환한 Length=1 원은 박스 절반 = BuildRadius까지 덮인다.
+			BuildRadiusDecal->DecalSize = FVector(DecalProjectionDepth, BuildRadius, BuildRadius);
+			BuildRadiusDecal->MarkRenderStateDirty(); // DecalSize 변경 강제 반영.
+
+			if (!CityData->BuildRadiusDecalMaterial.IsNull())
+			{
+				if (UMaterialInterface* DecalMat = CityData->BuildRadiusDecalMaterial.LoadSynchronous())
+				{
+					BuildRadiusMID = UMaterialInstanceDynamic::Create(DecalMat, this);
+					if (BuildRadiusMID)
+					{
+						BuildRadiusDecal->SetDecalMaterial(BuildRadiusMID);
+					}
+				}
+			}
+		}
 	}
 
 	// 점령 저항력 = 체력. MaxHealth는 UBVBuildingData(Super DA) 쪽 필드.
@@ -94,14 +150,16 @@ void ABVCityBase::BeginPlay()
 		CaptureDamageTotal = FMath::Max(1.f, BuildingData->MaxHealth);
 	}
 
-	// Super::BeginPlay()가 InitDynamicMaterials()와 초기 SetIsProducing()을 이미 처리함.
-	Super::BeginPlay();
-
-	// DA의 TeamType이 Player/Enemy로 설정돼 있어도 거점은 중립으로 시작하도록 강제.
-	if (bStartsNeutral)
+	// 거점의 초기 팀은 BuildingData(Team 카테고리)의 TeamType을 그대로 사용.
+	// DA 하나의 TeamType으로 "중립으로 시작 / 아군 본진 / 적 본진" 전부 표현 가능.
+	if (BuildingData)
 	{
-		TeamType = EBVTeam::Neutral;
+		TeamType = BuildingData->TeamType;
 	}
+
+	// Super::BeginPlay()가 InitDynamicMaterials()와 초기 SetIsProducing()을 이미 처리함.
+	// (TeamType을 위에서 먼저 세팅했으니 Super 안에서 팀 기반 초기화도 일관됨.)
+	Super::BeginPlay();
 
 	// 초기 점령 진행도: 팀에 따라 설정 (중립이면 0, 이미 특정 팀이면 풀 점령 상태로).
 	CaptureProgress =
@@ -123,20 +181,7 @@ void ABVCityBase::BeginPlay()
 			if (UBVCityCaptureWidget* CaptureWidget = Cast<UBVCityCaptureWidget>(UserWidget))
 			{
 				CaptureWidget->InitWithCity(this);
-				UE_LOG(LogTemp, Warning, TEXT("[City] %s: CaptureWidget bound."), *GetName());
 			}
-			else
-			{
-				UE_LOG(LogTemp, Warning,
-					TEXT("[City] %s: Overhead widget is %s, not UBVCityCaptureWidget. Check WBP parent class."),
-					*GetName(), *UserWidget->GetClass()->GetName());
-			}
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning,
-				TEXT("[City] %s: OverheadWidgetComponent has no UserWidget. Check DA's OverheadWidgetClass."),
-				*GetName());
 		}
 	}
 
@@ -145,6 +190,72 @@ void ABVCityBase::BeginPlay()
 
 	// 팀 상태 기준으로 스폰 타이머와 펄스를 최종 정리(Neutral이면 둘 다 off).
 	ResetSpawnTimerForCurrentTeam();
+
+	// 시작부터 발견된 도시(플레이어 본진 등)는 공지 없이 바로 발견 상태로.
+	if (bStartDiscovered && !bDiscoveredByPlayer)
+	{
+		bDiscoveredByPlayer = true;
+		OnCityDiscovered.Broadcast(this);
+	}
+
+	// 게리슨 RallyPoint 기본값 = 도시 액터 위치 (UI에서 옮기기 전까지 유닛은 도시 중앙으로 모임).
+	RallyPoint = GetActorLocation();
+
+	// 게리슨 인원수 변경 시 자동 출격 평가가 돌도록 self-bind.
+	// (AddToGarrison/RemoveFromGarrison/PruneGarrison/Dispatch 모두 OnGarrisonChanged를 쏨)
+	OnGarrisonChanged.AddDynamic(this, &ABVCityBase::HandleGarrisonChangedForAutoDispatch);
+}
+
+void ABVCityBase::SetBuildRadiusVisualVisible(bool bVisible)
+{
+	if (!BuildRadiusDecal) return;
+
+	// SetVisibility는 에디터 미리보기, SetHiddenInGame은 인게임 렌더링 게이트.
+	// 두 개 다 토글해서 PIE/Standalone 모두에서 일관되게 보이고/숨겨지도록.
+	BuildRadiusDecal->SetVisibility(bVisible);
+	BuildRadiusDecal->SetHiddenInGame(!bVisible);
+}
+
+bool ABVCityBase::IsLocationWithinBuildRadius(const FVector& WorldLoc) const
+{
+	// XY 평면 거리만 체크 (지형 높이 차이는 무시).
+	const FVector CityLoc = GetActorLocation();
+	const float DX = WorldLoc.X - CityLoc.X;
+	const float DY = WorldLoc.Y - CityLoc.Y;
+	const float DistSq = DX * DX + DY * DY;
+	return DistSq <= (BuildRadius * BuildRadius);
+}
+
+void ABVCityBase::MarkDiscoveredByPlayer()
+{
+	if (bDiscoveredByPlayer) return;
+	bDiscoveredByPlayer = true;
+
+	BroadcastDiscoveryAnnouncement();
+	OnCityDiscovered.Broadcast(this);
+}
+
+void ABVCityBase::BroadcastDiscoveryAnnouncement() const
+{
+	// BroadcastCaptureAnnouncement와 동일한 이름 폴백 규칙.
+	FText CityName = BuildingName;
+	if (CityName.IsEmpty() && BuildingData)
+	{
+		CityName = BuildingData->BuildingName;
+	}
+	if (CityName.IsEmpty())
+	{
+		CityName = FText::FromString(TEXT("거점"));
+	}
+
+	const FString Name = CityName.ToString();
+	const FString Particle = GetObjectParticle(Name);
+	const FString MessageStr = FString::Printf(TEXT("거점 [%s]%s 발견했습니다."), *Name, *Particle);
+
+	if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+	{
+		BVPC->ShowCaptureAnnouncement(FText::FromString(MessageStr));
+	}
 }
 
 void ABVCityBase::HandleHealthDepleted()
@@ -255,19 +366,240 @@ void ABVCityBase::ApplyCaptureDelta(EBVTeam AttackerTeam, float DamageAmount)
 
 void ABVCityBase::SpawnUnit()
 {
-	// 중립 상태에선 스폰 금지. 타이머가 어떤 경로로든 발화해도 안전.
+	// 중립 상태에선 스폰 금지.
 	if (TeamType == EBVTeam::Neutral) return;
+	if (!SpawnUnitClass) return;
 
-	// 현재 팀에 맞는 레인을 선택해서 AssignedLane에 세팅.
-	// (base SpawnUnit이 AssignedLane을 사용해 스폰 위치/방향 + 유닛 이동 경로 결정)
-	switch (TeamType)
+	// MaxGarrison 도달 — 생산 일시정지 (다음 타이머 틱에서 또 체크).
+	if (IsGarrisonFull()) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	// 스폰 반경: 건물 메시에 끼지 않도록 BoxComponent extent + 여유.
+	float SpawnRadius = 200.f;
+	if (BoxComponent)
 	{
-	case EBVTeam::Player: AssignedLane = PlayerTeamLane; break;
-	case EBVTeam::Enemy:  AssignedLane = EnemyTeamLane;  break;
-	default:              AssignedLane = nullptr;        break;
+		const float BoxRadius = BoxComponent->GetScaledBoxExtent().X;
+		SpawnRadius = BoxRadius + 100.f;
 	}
 
-	Super::SpawnUnit();
+	const FVector CityLoc = GetActorLocation();
+
+	// 스폰 방향: RallyPoint가 도시 외곽이면 그쪽으로 밀어내고, 도시와 거의 같으면 forward 사용.
+	FVector ToRally = FVector(RallyPoint.X - CityLoc.X, RallyPoint.Y - CityLoc.Y, 0.f);
+	FVector SpawnDir2D = ToRally.IsNearlyZero(1.f)
+		? FVector(GetActorForwardVector().X, GetActorForwardVector().Y, 0.f).GetSafeNormal()
+		: ToRally.GetSafeNormal();
+	if (SpawnDir2D.IsNearlyZero())
+	{
+		SpawnDir2D = FVector::ForwardVector;
+	}
+
+	FVector SpawnLocation = CityLoc + SpawnDir2D * SpawnRadius;
+	SpawnLocation.Z += 50.f; // 지면 클립 방지 (부모와 동일 패턴)
+
+	const FRotator SpawnRotation = SpawnDir2D.Rotation();
+	const FTransform SpawnTransform(SpawnRotation, SpawnLocation);
+
+	ABVAutobotBase* NewUnit = World->SpawnActorDeferred<ABVAutobotBase>(
+		SpawnUnitClass,
+		SpawnTransform,
+		this,
+		nullptr,
+		ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+
+	if (!NewUnit) return;
+
+	// 팀 + Rally 정보를 빙의 전에 주입 (AI OnPossess가 바로 BB에 반영).
+	NewUnit->SetGenericTeamId(GetGenericTeamId());
+	NewUnit->AssignedLane = nullptr; // City는 lane을 쓰지 않음.
+	NewUnit->bHasRallyDestination = true;
+	NewUnit->RallyDestination = RallyPoint;
+
+	NewUnit->FinishSpawning(SpawnTransform);
+
+	// 스폰 직후 게리슨에 등록 (en-route 인원도 MaxGarrison 산정에 포함).
+	AddToGarrison(NewUnit);
+}
+
+FVector ABVCityBase::SetRallyPoint(const FVector& NewWorldLoc)
+{
+	// BuildRadius 안에 들어오면 그대로, 밖이면 도시 중심에서 반경 경계로 클램프.
+	FVector Clamped = NewWorldLoc;
+	const FVector CityLoc = GetActorLocation();
+	const float DX = NewWorldLoc.X - CityLoc.X;
+	const float DY = NewWorldLoc.Y - CityLoc.Y;
+	const float DistSq = DX * DX + DY * DY;
+	const float MaxR = FMath::Max(1.f, BuildRadius);
+
+	if (DistSq > MaxR * MaxR)
+	{
+		const float Dist = FMath::Sqrt(DistSq);
+		const float Scale = MaxR / Dist;
+		Clamped.X = CityLoc.X + DX * Scale;
+		Clamped.Y = CityLoc.Y + DY * Scale;
+		// Z는 입력 그대로 유지 (지형 높이는 호출측이 결정).
+	}
+
+	if (RallyPoint.Equals(Clamped, 1.f))
+	{
+		return RallyPoint; // 변화 없음 — 재방송/재이동 생략.
+	}
+
+	RallyPoint = Clamped;
+
+	// 살아있는 게리슨 유닛에게 새 rally point으로 재이동 명령.
+	for (const TWeakObjectPtr<ABVAutobotBase>& Weak : Garrison)
+	{
+		if (ABVAutobotBase* Unit = Weak.Get())
+		{
+			Unit->SetRallyDestination(RallyPoint);
+		}
+	}
+
+	OnRallyPointChanged.Broadcast(RallyPoint);
+	return RallyPoint;
+}
+
+int32 ABVCityBase::GetGarrisonCount()
+{
+	PruneGarrison();
+	return Garrison.Num();
+}
+
+bool ABVCityBase::AddToGarrison(ABVAutobotBase* Unit)
+{
+	if (!Unit || Unit->bIsDead || !IsValid(Unit)) return false;
+
+	// 팀 가드 — 적팀 도시에 잘못 합류하는 사고 방지.
+	// City가 Neutral인 동안엔 누구도 합류 불가 (게리슨은 점령된 도시 전용 개념).
+	if (TeamType == EBVTeam::Neutral) return false;
+	if (Unit->GetGenericTeamId() != GetGenericTeamId()) return false;
+
+	// 중복 등록 방지 — 멱등하게 true 반환.
+	for (const TWeakObjectPtr<ABVAutobotBase>& Weak : Garrison)
+	{
+		if (Weak.Get() == Unit) return true;
+	}
+
+	// 가득 찼으면 거부. (PruneGarrison으로 죽은 슬롯 회수 후 재판정.)
+	if (GetGarrisonCount() >= MaxGarrison) return false;
+
+	Garrison.Add(Unit);
+	OnGarrisonChanged.Broadcast(Garrison.Num());
+	return true;
+}
+
+void ABVCityBase::RemoveFromGarrison(ABVAutobotBase* Unit)
+{
+	if (!Unit) return;
+
+	const int32 RemovedCount = Garrison.RemoveAll(
+		[Unit](const TWeakObjectPtr<ABVAutobotBase>& Weak) { return Weak.Get() == Unit; });
+
+	if (RemovedCount > 0)
+	{
+		OnGarrisonChanged.Broadcast(Garrison.Num());
+	}
+}
+
+void ABVCityBase::PruneGarrison()
+{
+	const int32 BeforeCount = Garrison.Num();
+
+	Garrison.RemoveAll([](const TWeakObjectPtr<ABVAutobotBase>& Weak)
+	{
+		const ABVAutobotBase* Unit = Weak.Get();
+		return !Unit || Unit->bIsDead || !IsValid(Unit);
+	});
+
+	if (Garrison.Num() != BeforeCount)
+	{
+		OnGarrisonChanged.Broadcast(Garrison.Num());
+	}
+}
+
+void ABVCityBase::SetDispatchTargetCity(ABVCityBase* NewTargetCity)
+{
+	// 자기 자신 또는 nullptr은 해제로 간주 (무한 출격 루프 방지).
+	if (!NewTargetCity || NewTargetCity == this)
+	{
+		ClearDispatchTargetCity();
+		return;
+	}
+
+	ABVCityBase* OldTarget = DispatchTargetCity.Get();
+	if (OldTarget == NewTargetCity)
+	{
+		// 같은 타겟 재지정 — 평가만 다시 돌려서 Threshold가 충족이면 발사.
+		EvaluateAutoDispatch();
+		return;
+	}
+
+	DispatchTargetCity = NewTargetCity;
+	OnDispatchTargetChanged.Broadcast(NewTargetCity);
+
+	// 이미 게리슨이 Threshold 이상이면 즉시 발사.
+	EvaluateAutoDispatch();
+}
+
+void ABVCityBase::ClearDispatchTargetCity()
+{
+	if (!DispatchTargetCity.IsValid()) return;
+
+	DispatchTargetCity.Reset();
+	OnDispatchTargetChanged.Broadcast(nullptr);
+}
+
+void ABVCityBase::Dispatch()
+{
+	ABVCityBase* TargetCity = DispatchTargetCity.Get();
+	if (!TargetCity || TargetCity == this) return;
+
+	// 죽은/만료된 약참조 정리. (이 호출 안에서 OnGarrisonChanged가 한 번 더 쏠 수 있음 — OK.)
+	PruneGarrison();
+	if (Garrison.Num() == 0) return;
+
+	const FVector TargetLoc = TargetCity->GetActorLocation();
+
+	// 게리슨 사본을 만들어 순회 — SetRallyDestination이 BB/MoveTo를 건드릴 때
+	// 컨트롤러가 다시 City API를 콜백으로 부르더라도 안전하게 끝내기 위해.
+	TArray<TWeakObjectPtr<ABVAutobotBase>> Pending = Garrison;
+
+	// 본 도시 게리슨은 즉시 비움 (Threshold 재평가 무한 루프 방지).
+	Garrison.Empty();
+
+	for (const TWeakObjectPtr<ABVAutobotBase>& Weak : Pending)
+	{
+		ABVAutobotBase* Unit = Weak.Get();
+		if (!Unit || Unit->bIsDead) continue;
+
+		Unit->DispatchedToCity = TargetCity;
+		Unit->SetRallyDestination(TargetLoc);
+	}
+
+	// 인원수 0 알림 (UI 갱신용). 자기 자신의 자동 평가도 트리거되지만 Garrison.Num()==0이라 no-op.
+	OnGarrisonChanged.Broadcast(0);
+
+	OnDispatchFired.Broadcast(this, TargetCity);
+}
+
+void ABVCityBase::EvaluateAutoDispatch()
+{
+	if (DispatchThreshold <= 0) return;
+
+	ABVCityBase* TargetCity = DispatchTargetCity.Get();
+	if (!TargetCity || TargetCity == this) return;
+
+	if (GetGarrisonCount() < DispatchThreshold) return;
+
+	Dispatch();
+}
+
+void ABVCityBase::HandleGarrisonChangedForAutoDispatch(int32 /*NewGarrisonCount*/)
+{
+	EvaluateAutoDispatch();
 }
 
 void ABVCityBase::UpdateEmissionColorForCurrentTeam()

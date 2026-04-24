@@ -3,6 +3,8 @@
 
 #include "Buildings/BVBuildingBase.h"
 #include "AI/BVLane.h"
+#include "Buildings/BVCityBase.h"
+#include "EngineUtils.h"
 
 #include "BVPlayerController.h"
 #include "Characters/BVAutobotBase.h"
@@ -12,7 +14,6 @@
 #include "Materials/MaterialInstanceDynamic.h"
 #include "Perception/AIPerceptionStimuliSourceComponent.h"
 #include "Widget/BVSpawnCooltimeBar.h"
-#include "DrawDebugHelpers.h"
 #include "GAS/CombatAttributeSet.h"
 #include "Perception/AISense_Sight.h"
 #include "Collision/BVCollision.h"
@@ -23,6 +24,9 @@
 #include "Widget/UBVBuildingOverheadWidget.h"
 #include "GAS/GASTags.h"
 #include "Weapons/Projectiles/BVLaserBeamBase.h"
+#include "Components/DecalComponent.h"
+#include "Components/BVStaticHoverRingComponent.h"
+#include "Materials/MaterialInterface.h"
 
 // Sets default values
 ABVBuildingBase::ABVBuildingBase()
@@ -45,6 +49,8 @@ ABVBuildingBase::ABVBuildingBase()
 	// 마우스 호버 전용. 실루엣을 정확히 잡으려고 메시 자체의 콜리전 사용.
 	// 게임플레이 충돌(Projectile/Pawn/Vision 등)은 BoxComponent가 담당.
 	StaticMeshComponent->SetCollisionProfileName(TEXT("Hoverable"));
+	// 다른 건물/거점의 호버 링이 이 메시 위에 투영되지 않도록 차단.
+	StaticMeshComponent->SetReceivesDecals(false);
 
 	// [GAS] ASC & Attributes
 
@@ -75,11 +81,31 @@ ABVBuildingBase::ABVBuildingBase()
 	OverheadWidgetComponent->SetDrawSize(FVector2D(120.f, 12.f));
 	OverheadWidgetComponent->SetRelativeScale3D(FVector(1.f));
 	OverheadWidgetComponent->SetUsingAbsoluteRotation(true);
+
+	// <--------------- Hover Ring Decal ----------------> //
+	// 바닥에 투영되는 호버 링. 머티리얼은 아래에서 기본 에셋을 자동 할당, 런타임에 MID로 래핑.
+	HoverRingDecal = CreateDefaultSubobject<UDecalComponent>(TEXT("HoverRingDecal"));
+	HoverRingDecal->SetupAttachment(RootComponent);
+	// -90 Pitch: 데칼 박스의 +X(투영 방향)가 아래를 향함 → 바닥에 투영.
+	HoverRingDecal->SetRelativeRotation(FRotator(-90.f, 0.f, 0.f));
+	HoverRingDecal->SetVisibility(false);
+	HoverRingDecal->SetHiddenInGame(true);
+
+	// 기본 링 머티리얼(소프트 참조). 에셋 없으면 BeginPlay에서 조용히 스킵.
+	HoverRingMaterial = TSoftObjectPtr<UMaterialInterface>(
+		FSoftObjectPath(TEXT("/Game/Materials/M_HoverRingDecal.M_HoverRingDecal")));
+
+	// 새 StaticMesh 기반 링 — 실제 렌더링 담당. 위 HoverRingDecal은 BP 호환성을 위해 남아있지만 미사용.
+	StaticHoverRingComponent = CreateDefaultSubobject<UBVStaticHoverRingComponent>(TEXT("StaticHoverRingComponent"));
+	StaticHoverRingComponent->SetupAttachment(RootComponent);
 }
 
 void ABVBuildingBase::Tick(float DeltaTime)
 {
 	Super::Tick(DeltaTime);
+
+	// 호버 페이드(메시 MID + 오버레이 + 스텐실)는 파괴 여부와 무관하게 갱신.
+	UpdateHoverAnim(DeltaTime);
 
 	// If destroyed, do nothing
 	if (bIsDestroyed) return;
@@ -170,6 +196,10 @@ void ABVBuildingBase::InitDynamicMaterials()
 	const int32 NumMaterials = StaticMeshComponent->GetNumMaterials();
 	DynamicMaterials.Reserve(NumMaterials);
 
+	// 인스턴스별 위상 오프셋. 머티리얼이 PhaseOffset 파라미터를 쓰면 펄스가 건물마다 어긋남.
+	// 0~TwoPi 범위: sin/cos 기반 펄스에 그대로 더해 쓰기 좋음.
+	const float InstancePhaseOffset = FMath::FRandRange(0.f, UE_TWO_PI);
+
 	for (int32 Index = 0; Index < NumMaterials; ++Index)
 	{
 		UMaterialInterface* SourceMat = StaticMeshComponent->GetMaterial(Index);
@@ -177,6 +207,8 @@ void ABVBuildingBase::InitDynamicMaterials()
 
 		UMaterialInstanceDynamic* MID = UMaterialInstanceDynamic::Create(SourceMat, this);
 		if (!MID) continue;
+
+		MID->SetScalarParameterValue(PhaseOffsetParamName, InstancePhaseOffset);
 
 		StaticMeshComponent->SetMaterial(Index, MID);
 		DynamicMaterials.Add(MID);
@@ -419,6 +451,62 @@ void ABVBuildingBase::BeginPlay()
 	// 런타임에 IsProducing 파라미터를 조작하려면 MID 필요.
 	InitDynamicMaterials();
 
+	// 건물 전체가 다른 호버 링 데칼을 받지 않도록 일괄 차단.
+	TArray<UPrimitiveComponent*> AllPrims;
+	GetComponents<UPrimitiveComponent>(AllPrims);
+	for (UPrimitiveComponent* Prim : AllPrims)
+	{
+		if (Prim)
+		{
+			Prim->SetReceivesDecals(false);
+		}
+	}
+
+	// 호버 링 데칼 세팅: 메시 풋프린트 기준으로 크기 자동 계산 + MID 초기화.
+	if (HoverRingDecal)
+	{
+		// 캘리브레이션 계수: 메시 바운딩 박스는 여백을 포함해서 실제 풋프린트보다 큼.
+		// 시각적으로 맞는 기본값이 0.65라서 Padding에 곱함.
+		constexpr float CalibrationFactor = 0.65f;
+
+		// 메시 로컬 바운딩의 가로/세로 중 큰 쪽을 풋프린트로 사용.
+		float LocalDiameter = 256.f;
+		if (StaticMeshComponent && StaticMeshComponent->GetStaticMesh())
+		{
+			const FBox LocalBox = StaticMeshComponent->GetStaticMesh()->GetBoundingBox();
+			const FVector Extent = LocalBox.GetExtent();
+			const float Footprint = FMath::Max(Extent.X, Extent.Y) * 2.f;
+			LocalDiameter = Footprint * HoverRingPadding * CalibrationFactor;
+		}
+
+		HoverRingDecal->DecalSize = FVector(HoverRingDepth, LocalDiameter, LocalDiameter);
+		HoverRingDecal->SetRelativeLocation(HoverRingOffset);
+
+		// 월드 지름 = 로컬 지름 × 액터 스케일. UV 두께 = 월드 두께 / 월드 지름 → 크기 무관 일정.
+		const float ActorScale = GetActorScale3D().GetMax();
+		const float WorldDiameter = LocalDiameter * FMath::Max(ActorScale, KINDA_SMALL_NUMBER);
+		const float UVThickness = FMath::Clamp(HoverRingThickness / WorldDiameter, 0.002f, 0.3f);
+
+		if (!HoverRingMaterial.IsNull())
+		{
+			if (UMaterialInterface* Src = HoverRingMaterial.LoadSynchronous())
+			{
+				HoverRingMID = UMaterialInstanceDynamic::Create(Src, this);
+				HoverRingDecal->SetDecalMaterial(HoverRingMID);
+				if (HoverRingMID)
+				{
+					HoverRingMID->SetScalarParameterValue(RingIntensityParamName, 0.f);
+					HoverRingMID->SetVectorParameterValue(RingTintParamName, FLinearColor::White);
+					HoverRingMID->SetScalarParameterValue(RingThicknessParamName, UVThickness);
+				}
+			}
+		}
+	}
+
+	// City 반경 안에 들어와 있으면 OwningCity로 캐싱 — SpawnUnit이 이걸 보고 게리슨 라우팅 결정.
+	// (도시 자신은 ResolveOwningCity 내부에서 자기 자신을 owning city로 갖지 않도록 가드.)
+	ResolveOwningCity();
+
 	const bool bWillProduce = SpawnUnitClass && RespawnInterval > 0.f;
 
 	// 생산 중 펄스 on/off 초기 상태 반영 (머티리얼에 IsProducing 파라미터 없어도 안전).
@@ -436,6 +524,43 @@ void ABVBuildingBase::BeginPlay()
 			);
 	}
 
+}
+
+void ABVBuildingBase::ResolveOwningCity()
+{
+	OwningCity.Reset();
+
+	// 도시 자신은 owning city를 갖지 않는다 (자기 자신을 게리슨으로 잡으면 무한 루프 위험).
+	if (Cast<ABVCityBase>(this)) return;
+
+	UWorld* World = GetWorld();
+	if (!World) return;
+
+	const FVector MyLoc = GetActorLocation();
+
+	// 자기 위치를 BuildRadius 안에 포함하는 도시 중 가장 가까운 것을 선택.
+	// (반경이 겹치는 경우 발생 가능 — 가장 가까운 도시 = 가장 자연스러운 owner.)
+	ABVCityBase* BestCity = nullptr;
+	float BestDistSq = TNumericLimits<float>::Max();
+
+	for (TActorIterator<ABVCityBase> It(World); It; ++It)
+	{
+		ABVCityBase* City = *It;
+		if (!City) continue;
+		if (!City->IsLocationWithinBuildRadius(MyLoc)) continue;
+
+		const float DistSq = FVector::DistSquared2D(MyLoc, City->GetActorLocation());
+		if (DistSq < BestDistSq)
+		{
+			BestDistSq = DistSq;
+			BestCity = City;
+		}
+	}
+
+	if (BestCity)
+	{
+		OwningCity = BestCity;
+	}
 }
 
 
@@ -487,12 +612,15 @@ void ABVBuildingBase::ApplyInitStatFromDataTable()
 
 void ABVBuildingBase::SpawnUnit()
 {
-	
-	UE_LOG(LogTemp, Warning, TEXT("SpawnUnit called!"))
 	if (!SpawnUnitClass) return;
 
 	UWorld* World = GetWorld();
 	if (!World) return;
+
+	// City 산하 생산건물(barracks/factory 등): 도시 게리슨이 가득이면 생산 일시정지.
+	// 다음 타이머 틱에서 다시 평가. 게리슨이 줄어들면 자연스럽게 재개.
+	ABVCityBase* RoutedCity = OwningCity.Get();
+	if (RoutedCity && RoutedCity->IsGarrisonFull()) return;
 
 	// 스폰 반경 (건물 중심으로부터 허용되는 최대 거리)
 	float SpawnRadius = 200.f;
@@ -505,11 +633,11 @@ void ABVBuildingBase::SpawnUnit()
 	const FVector BuildingLoc = GetActorLocation();
 
 	// 스폰 위치: 기본은 Forward 방향으로 반경만큼 이동한 지점.
-	// AssignedLane이 있으면 "레인에서 가장 가까운 지점"으로 덮어쓰되, 반경 바깥이면 반경 내로 클램프.
+	// City 산하면 lane 무시(도시 rally로 가야 하니까), 아니면 lane 우선.
 	FVector SpawnLocation    = BuildingLoc + GetActorForwardVector() * SpawnRadius;
 	FVector SpawnDirection   = GetActorForwardVector();
 
-	if (AssignedLane)
+	if (AssignedLane && !RoutedCity)
 	{
 		const FVector FootOnLane         = AssignedLane->GetPerpendicularFoot(BuildingLoc);
 		const FVector BuildingToFoot     = FVector(FootOnLane.X - BuildingLoc.X, FootOnLane.Y - BuildingLoc.Y, 0.f);
@@ -559,56 +687,89 @@ void ABVBuildingBase::SpawnUnit()
 	{
 		// 2. 건물의 팀 정보를 유닛에게 그대로 물려줍니다!
 		NewSpawnUnit->SetGenericTeamId(GetGenericTeamId());
-		
-		// 3. AI가 빙의하기 전에, 유닛의 호주머니에 레인 정보를 쏙 넣어줍니다!
-		if (AssignedLane)
+
+		// 3. AI가 빙의하기 전에, 게리슨/레인 정보를 쏙 넣어줍니다.
+		//    City 산하 생산건물은 lane 대신 rally point으로 라우팅.
+		if (RoutedCity)
+		{
+			NewSpawnUnit->AssignedLane = nullptr;
+			NewSpawnUnit->bHasRallyDestination = true;
+			NewSpawnUnit->RallyDestination = RoutedCity->RallyPoint;
+		}
+		else if (AssignedLane)
 		{
 			NewSpawnUnit->AssignedLane = AssignedLane;
 		}
 
-		// 4. 자 이제 멈춰뒀던 스폰을 완료해라! (이때 AI가 빙의하면서 레인 정보를 성공적으로 읽음)
+		// 4. 자 이제 멈춰뒀던 스폰을 완료해라! (이때 AI가 빙의하면서 정보를 성공적으로 읽음)
 		NewSpawnUnit->FinishSpawning(SpawnTransform);
+
+		// 5. 도시 게리슨 등록은 FinishSpawning 후 (en-route 인원도 cap 산정에 포함).
+		if (RoutedCity)
+		{
+			RoutedCity->AddToGarrison(NewSpawnUnit);
+		}
 	}
 }
 
 void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 {
 	bIsHovered = bInHovered;
-	if (StaticMeshComponent)
+	HoverTargetValue = bInHovered ? 1.f : 0.f;
+
+	// 새 StaticMesh 버전 hover ring 호출 (BoxComponent 기반 AutoSize + Project Settings 값 사용).
+	if (StaticHoverRingComponent)
 	{
-		uint8 Stencil = 0;
+		StaticHoverRingComponent->SetHovered(bInHovered, TeamType);
+	}
 
-		if (bIsHovered)
+	if (!bInHovered) return;
+
+	// 호버 시작 시점에 팀 색을 고정. attitude가 아닌 실제 팀 ID로 판정
+	// (attitude는 점령용으로 중립을 적대로 취급해서 색 오인 유발).
+	EBVTeam ViewerTeam = EBVTeam::None;
+	if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
+	{
+		if (IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC))
 		{
-			// 호버 색은 attitude가 아닌 실제 팀 ID로 직접 판정.
-			// (attitude는 거점 점령을 위해 Neutral→Hostile로 바꿔놔서 호버 색까지 빨강으로 오인됨)
-			APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0);
-			IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC);
-
-			if (TeamAgentPC)
-			{
-				const EBVTeam MyTeam = TeamType;
-				const FGenericTeamId PlayerId = TeamAgentPC->GetGenericTeamId();
-
-				if (MyTeam == EBVTeam::Neutral)
-				{
-					Stencil = 3; // 중립 (파랑)
-				}
-				else if (MyTeam == static_cast<EBVTeam>(PlayerId.GetId()))
-				{
-					Stencil = 1; // 아군 (초록)
-				}
-				else
-				{
-					Stencil = 2; // 적 (빨강)
-				}
-			}
+			ViewerTeam = static_cast<EBVTeam>(TeamAgentPC->GetGenericTeamId().GetId());
 		}
-		
-		StaticMeshComponent->SetRenderCustomDepth(bIsHovered);
-		StaticMeshComponent->SetCustomDepthStencilValue(Stencil);
-		
-		// FString DebugMsg = FString::Printf(TEXT("[%s] is hovered! Stencil : %d"), *GetName(), Stencil);
-		// GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Orange, DebugMsg);
+	}
+
+	// 아군=녹, 적=적, 중립=청.
+	if (TeamType == EBVTeam::Neutral)
+	{
+		HoverTintColor = FLinearColor(0.2f, 0.6f, 1.f);
+	}
+	else if (TeamType == ViewerTeam)
+	{
+		HoverTintColor = FLinearColor(0.2f, 1.f, 0.4f);
+	}
+	else
+	{
+		HoverTintColor = FLinearColor(1.f, 0.25f, 0.25f);
+	}
+
+	// 첫 프레임에 MID가 준비되어 있지 않았다면(호버 직전까지 로드 지연) 지금 만들어둠.
+	if (!HoverRingMID && HoverRingDecal && !HoverRingMaterial.IsNull())
+	{
+		if (UMaterialInterface* Src = HoverRingMaterial.LoadSynchronous())
+		{
+			HoverRingMID = UMaterialInstanceDynamic::Create(Src, this);
+			HoverRingDecal->SetDecalMaterial(HoverRingMID);
+		}
+	}
+}
+
+void ABVBuildingBase::UpdateHoverAnim(float DeltaTime)
+{
+	// Hover ring 렌더링은 StaticHoverRingComponent가 전담. 여기서는 interp 값만 유지.
+	HoverCurrentValue = FMath::FInterpTo(HoverCurrentValue, HoverTargetValue, DeltaTime, HoverEaseSpeed);
+
+	// 기존 Decal(HoverRingDecal)은 BP 호환성 유지용으로 남아있지만 visibility를 항상 꺼둠.
+	if (HoverRingDecal && HoverRingDecal->IsVisible())
+	{
+		HoverRingDecal->SetVisibility(false);
+		HoverRingDecal->SetHiddenInGame(true);
 	}
 }

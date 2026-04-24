@@ -62,8 +62,6 @@ void UBVShopSlotWidget::OnItemButtonClicked()
 			// Deduct gold and add item to inventory
 			PS->AddRewards(-ItemData->ItemPrice, 0.0f);
 			Character->AddItemToInventory(ItemData);
-
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Green, TEXT("Purchase Successful!"));
 		}
 		else
 		{
@@ -71,7 +69,6 @@ void UBVShopSlotWidget::OnItemButtonClicked()
 			{
 				BVPC->PlayAnnouncerVoice(EBVAnnouncerEvent::NotEnoughGold);
 			}
-			if (GEngine) GEngine->AddOnScreenDebugMessage(-1, 3.0f, FColor::Red, TEXT("Not enough gold!"));
 		}
 	}
 }
