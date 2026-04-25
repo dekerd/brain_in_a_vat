@@ -397,10 +397,10 @@ protected:
 // Main HUD Widget
 public:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<class UUserWidget> MainHUDWidgetClass;
-	
+	TSubclassOf<class UBVMainHUDWidget> MainHUDWidgetClass;
+
 	UPROPERTY()
-	TObjectPtr<class UUserWidget> MainHUDWidget;
+	TObjectPtr<class UBVMainHUDWidget> MainHUDWidget;
 	
 // Gold Popup Widget
 public:
@@ -418,15 +418,6 @@ public:
 	UPROPERTY()
 	TObjectPtr<class UUserWidget> BuildingDetailWidget;
 
-	// 거점(City) 전용 상세 패널 클래스 — fallback. BuildingDetail과는 별개.
-	// 우선순위: 도시 DA(UBVCityData)의 CityDetailWidgetClass → 비어있으면 이 값.
-	// 모든 도시가 같은 패널을 쓰면 여기만 채워두면 됨. 도시별로 다르게 쓸 땐 DA에서 오버라이드.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "UI")
-	TSubclassOf<class UUserWidget> CityDetailWidgetClass;
-
-	UPROPERTY()
-	TObjectPtr<class UUserWidget> CityDetailWidget;
-
 	UFUNCTION(BlueprintCallable, Category = "UI")
 	void ShowBuildingDetail(ABVBuildingBase* InBuilding);
 
@@ -437,7 +428,7 @@ protected:
 	// 현재 상세 패널이 표시 중인 건물 (약한 참조)
 	TWeakObjectPtr<ABVBuildingBase> DetailBuilding;
 
-	// 현재 활성화된 상세 위젯(BuildingDetailWidget 또는 CityDetailWidget).
+	// 현재 활성화된 상세 위젯(BuildingDetailWidget 또는 MainHUD의 CityDetailPanel).
 	// Tick에서 위치/프로그레스 업데이트 시 이걸 참조.
 	UPROPERTY()
 	TObjectPtr<class UUserWidget> ActiveDetailWidget;
