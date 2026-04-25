@@ -30,6 +30,7 @@
 #include "Widget/BVBuildingDetailWidget.h"
 #include "Widget/BVCaptureAnnouncementWidget.h"
 #include "Widget/BVCityDetailWidget.h"
+#include "Widget/BVMainHUDWidget.h"
 #include "Data/BVCityData.h"
 #include "Widget/BVConstructionMenuWidget.h"
 #include "Widget/BVUnitDetailWidget.h"
@@ -93,10 +94,16 @@ void ABVPlayerController::BeginPlay()
 	// MainHUDWidget
 	if (MainHUDWidgetClass)
 	{
-		MainHUDWidget = CreateWidget<UUserWidget>(this, MainHUDWidgetClass);
+		MainHUDWidget = CreateWidget<UBVMainHUDWidget>(this, MainHUDWidgetClass);
 		if (MainHUDWidget)
 		{
 			MainHUDWidget->AddToViewport();
+
+			// 거점 상세 패널은 MainHUD에 임베디드. 처음엔 비표시.
+			if (MainHUDWidget->CityDetailPanel)
+			{
+				MainHUDWidget->CityDetailPanel->SetVisibility(ESlateVisibility::Hidden);
+			}
 		}
 	}
 
@@ -182,7 +189,7 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 	}
 
 	// 상세 패널이 열려 있을 때, 리스폰 프로그레스 갱신 + 건물 옆에 붙여 따라가기
-	// (BuildingDetailWidget 또는 CityDetailWidget 중 활성화된 쪽을 참조)
+	// (BuildingDetailWidget 또는 MainHUD의 CityDetailPanel 중 활성화된 쪽을 참조)
 	if (ActiveDetailWidget && ActiveDetailWidget->GetVisibility() == ESlateVisibility::Visible)
 	{
 		if (ABVBuildingBase* DetailB = DetailBuilding.Get())
@@ -193,7 +200,7 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 			}
 			else
 			{
-				// 1) 리스폰 프로그레스 갱신 (위젯 종류별로)
+				// 리스폰 프로그레스 갱신
 				float Ratio = 0.f;
 				if (DetailB->RespawnInterval > 0.f && DetailB->SpawnUnitClass)
 				{
@@ -203,26 +210,26 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 				if (UBVBuildingDetailWidget* DetailW = Cast<UBVBuildingDetailWidget>(ActiveDetailWidget))
 				{
 					DetailW->SetRespawnProgress(Ratio);
+
+					// floating 패널: 건물 월드 위치 → 위젯 좌표 변환해 따라가기
+					FVector2D WidgetPos;
+					if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+							this, DetailB->GetActorLocation(), WidgetPos, false))
+					{
+						const FVector2D PanelOffset(60.f, -30.f);
+						DetailW->SetPositionInViewport(WidgetPos + PanelOffset, false);
+						DetailW->SetVisibility(ESlateVisibility::Visible);
+					}
+					else
+					{
+						// 건물이 카메라 뒤/밖이면 숨김
+						DetailW->SetVisibility(ESlateVisibility::Hidden);
+					}
 				}
 				else if (UBVCityDetailWidget* CityW = Cast<UBVCityDetailWidget>(ActiveDetailWidget))
 				{
+					// MainHUD에 임베디드 — 위치 갱신 없이 리스폰만 갱신.
 					CityW->SetRespawnProgress(Ratio);
-				}
-
-				// 2) 건물 월드 위치 -> 위젯(슬레이트) 좌표 변환해 위젯 위치 갱신
-				FVector2D WidgetPos;
-				if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-						this, DetailB->GetActorLocation(), WidgetPos, false))
-				{
-					// 스크린 픽셀 기준 단순 오프셋: 건물 중심에서 오른쪽으로 약간 띄우기
-					const FVector2D PanelOffset(60.f, -30.f);
-					ActiveDetailWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
-					ActiveDetailWidget->SetVisibility(ESlateVisibility::Visible);
-				}
-				else
-				{
-					// 건물이 카메라 뒤/밖이면 숨김
-					ActiveDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 				}
 			}
 		}
@@ -630,7 +637,8 @@ void ABVPlayerController::OnBuildKeyPressed()
 	// City-only 빌드: City Detail 패널이 열려서 도시를 보여줄 때만 B키가 먹힌다.
 	// 도시가 아닌 상태에서는 B키 무시 (Hero 주도 글로벌 빌드 경로는 제거됨).
 	ABVCityBase* ContextCity = nullptr;
-	if (CityDetailWidget && CityDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	if (MainHUDWidget && MainHUDWidget->CityDetailPanel &&
+		MainHUDWidget->CityDetailPanel->GetVisibility() == ESlateVisibility::Visible)
 	{
 		ContextCity = Cast<ABVCityBase>(DetailBuilding.Get());
 	}
@@ -775,25 +783,10 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		}
 	}
 
-	// 거점(City)과 일반 건물은 서로 다른 디테일 위젯 사용.
-	// City 패널 클래스 결정: DA의 CityDetailWidgetClass 우선, 비어있으면 PC 폴백.
-	// 둘 다 비어있으면 기존 BuildingDetailWidget으로 자연 폴백.
+	// 거점이면 MainHUD에 임베디드된 CityDetailPanel을 사용, 일반 건물이면 floating BuildingDetailWidget.
 	ABVCityBase* City = Cast<ABVCityBase>(InBuilding);
-
-	TSubclassOf<UUserWidget> EffectiveCityWidgetClass = nullptr;
-	if (City)
-	{
-		if (const UBVCityData* CityData = Cast<UBVCityData>(City->BuildingData))
-		{
-			EffectiveCityWidgetClass = CityData->CityDetailWidgetClass;
-		}
-		if (!EffectiveCityWidgetClass) // DA 슬롯 비었으면 PC 폴백
-		{
-			EffectiveCityWidgetClass = CityDetailWidgetClass;
-		}
-	}
-
-	const bool bUseCityWidget = (City != nullptr) && (EffectiveCityWidgetClass != nullptr);
+	UBVCityDetailWidget* CityPanel = (MainHUDWidget ? MainHUDWidget->CityDetailPanel : nullptr);
+	const bool bUseCityWidget = (City != nullptr) && (CityPanel != nullptr);
 
 	// 반대편 위젯은 숨김.
 	if (bUseCityWidget)
@@ -802,34 +795,18 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 	}
 	else
 	{
-		if (CityDetailWidget) CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+		if (CityPanel) CityPanel->SetVisibility(ESlateVisibility::Hidden);
 	}
 
-	// 필요한 쪽 위젯을 lazy-init.
 	UUserWidget* TargetWidget = nullptr;
 
 	if (bUseCityWidget)
 	{
-		// 캐시 클래스가 다르면(다른 도시가 다른 패널 쓰는 경우) 폐기 후 재생성.
-		if (CityDetailWidget && CityDetailWidget->GetClass() != EffectiveCityWidgetClass)
-		{
-			CityDetailWidget->RemoveFromParent();
-			CityDetailWidget = nullptr;
-		}
-
-		if (!CityDetailWidget)
-		{
-			CityDetailWidget = CreateWidget<UUserWidget>(this, EffectiveCityWidgetClass);
-			if (CityDetailWidget)
-			{
-				CityDetailWidget->AddToViewport();
-				CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
-			}
-		}
-		TargetWidget = CityDetailWidget;
+		TargetWidget = CityPanel;
 	}
 	else
 	{
+		// floating BuildingDetailWidget은 lazy-init.
 		if (!BuildingDetailWidget && BuildingDetailWidgetClass)
 		{
 			BuildingDetailWidget = CreateWidget<UUserWidget>(this, BuildingDetailWidgetClass);
@@ -856,15 +833,10 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		IBVDamageableInterface::Execute_SetSelected(InBuilding, true);
 	}
 
-	// 위젯 종류에 맞는 초기화 호출.
-	// 거점이라도 CityDetailWidgetClass가 없어서 BuildingDetailWidget으로 폴백한 경우
-	// SetFromBuilding로 초기화 (건물 패널이 체력을 보여주게 됨).
 	if (bUseCityWidget)
 	{
-		if (UBVCityDetailWidget* DetailW = Cast<UBVCityDetailWidget>(TargetWidget))
-		{
-			DetailW->SetFromCity(City);
-		}
+		CityPanel->SetFromCity(City);
+		CityPanel->SetVisibility(ESlateVisibility::Visible);
 	}
 	else
 	{
@@ -872,17 +844,16 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 		{
 			DetailW->SetFromBuilding(InBuilding);
 		}
-	}
+		TargetWidget->SetVisibility(ESlateVisibility::Visible);
 
-	TargetWidget->SetVisibility(ESlateVisibility::Visible);
-
-	// 오픈 즉시 한 번 위치를 잡아둠 (다음 틱부터 PlayerTick에서 이어서 갱신)
-	FVector2D WidgetPos;
-	if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
-			this, InBuilding->GetActorLocation(), WidgetPos, false))
-	{
-		const FVector2D PanelOffset(60.f, -30.f);
-		TargetWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+		// floating: 오픈 즉시 한 번 위치 잡아두기 (다음 틱부터 PlayerTick에서 이어서 갱신)
+		FVector2D WidgetPos;
+		if (UWidgetLayoutLibrary::ProjectWorldLocationToWidgetPosition(
+				this, InBuilding->GetActorLocation(), WidgetPos, false))
+		{
+			const FVector2D PanelOffset(60.f, -30.f);
+			TargetWidget->SetPositionInViewport(WidgetPos + PanelOffset, false);
+		}
 	}
 }
 
@@ -904,9 +875,10 @@ void ABVPlayerController::HideBuildingDetail()
 	{
 		BuildingDetailWidget->SetVisibility(ESlateVisibility::Hidden);
 	}
-	if (CityDetailWidget && CityDetailWidget->GetVisibility() == ESlateVisibility::Visible)
+	if (MainHUDWidget && MainHUDWidget->CityDetailPanel &&
+		MainHUDWidget->CityDetailPanel->GetVisibility() == ESlateVisibility::Visible)
 	{
-		CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+		MainHUDWidget->CityDetailPanel->SetVisibility(ESlateVisibility::Hidden);
 	}
 }
 
@@ -1532,9 +1504,9 @@ void ABVPlayerController::EnterCityBuildMode(ABVCityBase* City, TSubclassOf<ABVB
 		// ghost 배치 모드 동안에도 거점 선택 상태(DetailBuilding + hover ring)는 유지하되,
 		// 패널 자체는 잠시 숨김 (화면 가림 방지). 착공/취소 후 다시 표시됨.
 		ShowBuildingDetail(City);
-		if (CityDetailWidget)
+		if (MainHUDWidget && MainHUDWidget->CityDetailPanel)
 		{
-			CityDetailWidget->SetVisibility(ESlateVisibility::Hidden);
+			MainHUDWidget->CityDetailPanel->SetVisibility(ESlateVisibility::Hidden);
 		}
 	}
 }

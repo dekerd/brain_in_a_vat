@@ -20,7 +20,6 @@ class UBVConstructionMenuSlotWidget;
  * UMG BindWidget 이름:
  *  - BuildingIconImage      (UImage)
  *  - BuildingNameText       (UTextBlock)
- *  - DescriptionText        (UTextBlock)
  *  - CaptureProgressBar     (UProgressBar)    진행도 |값| + 부호에 따라 색 변경
  *  - OwnerText              (UTextBlock)      * 선택, "중립" / "아군" / "적" 표시
  *  - CaptureProgressText    (UTextBlock)      * 선택, 퍼센트 텍스트
@@ -40,9 +39,6 @@ public:
 
 	UPROPERTY(meta = (BindWidget))
 	UTextBlock* BuildingNameText;
-
-	UPROPERTY(meta = (BindWidget))
-	UTextBlock* DescriptionText;
 
 	// --- Capture progress ---
 	UPROPERTY(meta = (BindWidget))

@@ -8,7 +8,6 @@
 class UNiagaraSystem;
 class ABVBuildingBase;
 class UMaterialInterface;
-class UUserWidget;
 
 /**
  * ABVCityBase 전용 DataAsset.
@@ -30,11 +29,6 @@ public:
 	// NOTE: 로직은 아직 미구현. DA 슬롯만 먼저 준비.
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City", meta = (ClampMin = "0.0"))
 	float PostCaptureInvulnSeconds = 0.f;
-
-	// 이 거점을 클릭했을 때 띄울 상세 패널 위젯 클래스 (도시별 패널을 다르게 쓰고 싶을 때).
-	// 비워두면 PlayerController의 CityDetailWidgetClass를 폴백으로 사용한다.
-	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "City|UI")
-	TSubclassOf<UUserWidget> CityDetailWidgetClass;
 
 	// ─── Build / Garrison ────────────────────────────────────
 	// 도시 중심에서 이 반경 안에만 건물을 지을 수 있다 (cm). 데칼/검사 둘 다 이 값 사용.

@@ -50,7 +50,6 @@ void UBVCityDetailWidget::SetFromCity(ABVCityBase* InCity)
 	{
 		if (BuildingIconImage) BuildingIconImage->SetBrushFromTexture(nullptr);
 		if (BuildingNameText)  BuildingNameText->SetText(FText::GetEmpty());
-		if (DescriptionText)   DescriptionText->SetText(FText::GetEmpty());
 		if (CaptureProgressBar) CaptureProgressBar->SetPercent(0.f);
 		if (OwnerText)         OwnerText->SetText(FText::GetEmpty());
 		if (CaptureProgressText) CaptureProgressText->SetText(FText::GetEmpty());
@@ -78,11 +77,6 @@ void UBVCityDetailWidget::SetFromCity(ABVCityBase* InCity)
 	{
 		FText Name = (BData && !BData->BuildingName.IsEmpty()) ? BData->BuildingName : InCity->BuildingName;
 		BuildingNameText->SetText(Name);
-	}
-
-	if (DescriptionText)
-	{
-		DescriptionText->SetText(BData ? BData->Description : FText::GetEmpty());
 	}
 
 	// --- 점령 진행도 바인딩 ---
