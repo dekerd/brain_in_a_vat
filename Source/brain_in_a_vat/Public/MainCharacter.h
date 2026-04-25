@@ -53,6 +53,7 @@ public:
 public:
 	virtual FGenericTeamId GetTeamId_Implementation() const override { return GetGenericTeamId(); }
 	virtual bool IsDestroyed_Implementation() const override { return bIsDead; }
+	virtual void SetSelected_Implementation(bool bInSelected) override;
 	virtual void SetHovered_Implementation(bool bInHovered) override;
 
 // Hover/Selection ring

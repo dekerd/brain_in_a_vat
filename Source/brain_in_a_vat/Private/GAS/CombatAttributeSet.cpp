@@ -17,7 +17,9 @@ UCombatAttributeSet::UCombatAttributeSet()
 	InitAttackSpeed(1.0f);
 	InitAttackRange(20.0f);
 	InitMovementSpeed(150.0f);
-	
+	InitMaxSupply(100.0f);
+	InitSupply(100.0f);
+
 }
 
 void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue)
@@ -31,6 +33,10 @@ void UCombatAttributeSet::PreAttributeChange(const FGameplayAttribute& Attribute
 	else if (Attribute == GetManaAttribute())
 	{
 		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxMana());
+	}
+	else if (Attribute == GetSupplyAttribute())
+	{
+		NewValue = FMath::Clamp(NewValue, 0.0f, GetMaxSupply());
 	}
 }
 

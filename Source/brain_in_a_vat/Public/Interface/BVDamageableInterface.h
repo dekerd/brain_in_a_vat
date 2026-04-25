@@ -30,6 +30,12 @@ public:
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "Combat")
 	bool IsDestroyed() const;
 
+	// 선택 상태(발밑 원 링). 실제 선택에 의해서만 토글.
+	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "UI")
+	void SetSelected(bool bInSelected);
+
+	// 호버 상태(외곽선 아웃라인). 마우스 커서가 올라가있거나 드래그 박스 안에 들어있을 때 ON.
+	// 선택과 독립적으로 동시 활성 가능.
 	UFUNCTION(BlueprintNativeEvent, BlueprintCallable, Category = "UI")
 	void SetHovered(bool bInHovered);
 	

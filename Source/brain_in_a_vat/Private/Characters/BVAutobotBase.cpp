@@ -165,8 +165,8 @@ void ABVAutobotBase::BeginPlay()
 {
 	Super::BeginPlay();
 
-	// [Perf] URO는 생성자에서 bEnableUpdateRateOptimizations=true로 켜둠.
-	// 화면 안 보이는 유닛은 본/포즈 tick 스킵 (VisibilityBasedAnimTickOption 설정됨).
+	// [Perf] URO + OnlyTickMontagesWhenNotRendered는 BVCharacterBase 생성자에서 설정됨.
+	// fog로 가려진 유닛은 렌더링 안 돼 본 refresh가 스킵된다.
 
 	// Get the height of the autobot
 	float TopZ = GetActorLocation().Z;
@@ -1008,30 +1008,45 @@ void ABVAutobotBase::TickDispatchArrival(float DeltaTime)
 	//       유닛은 도시 영역 안에서 lingering 상태로 머무름.
 }
 
-void ABVAutobotBase::SetRallyDestination(const FVector& NewRallyPoint)
+void ABVAutobotBase::SetRallyDestination(const FVector& NewRallyPoint, bool bManualCommand)
 {
 	bHasRallyDestination = true;
 	RallyDestination = NewRallyPoint;
 
-	// AI가 살아있고 전투 중이 아니면 즉시 BB의 TargetLocation을 새 지점으로 갱신.
-	// 전투 중이라면 Perception이 끝나면서 자연스럽게 SetTargetLocationFromLaneState/Rally로 돌아오게 두자.
-	if (ABVAIController* AICon = Cast<ABVAIController>(GetController()))
+	ABVAIController* AICon = Cast<ABVAIController>(GetController());
+	if (!AICon) return;
+
+	// 플레이어의 수동 명령: BB 키만 세팅하고 BT가 흐름을 전담.
+	// BT에 bManualMoveActive 조건의 최상위 분기가 있어, 이 키가 true면 공격/이동 모두 중단하고
+	// 수동 이동 분기로 선점 전환. MoveTo 완료 후 ClearManualMoveFlag 태스크가 키를 해제.
+	if (bManualCommand)
 	{
 		if (UBlackboardComponent* BB = AICon->GetBlackboardComponent())
 		{
-			const bool bAttacking = BB->GetValueAsBool(TEXT("bIsAttacking"));
-			if (!bAttacking)
-			{
-				BB->SetValueAsVector(TEXT("TargetLocation"), NewRallyPoint);
+			BB->SetValueAsObject(TEXT("AttackTargetActor"), nullptr);
+			BB->SetValueAsBool(TEXT("bIsAttacking"), false);
+			BB->SetValueAsBool(TEXT("bManualMoveActive"), true);
+			BB->SetValueAsVector(TEXT("TargetLocation"), NewRallyPoint);
+		}
+		return;
+	}
 
-				// BT MoveTo가 latent 상태라면 즉시 갱신을 못 받을 수 있으니 명시적 MoveTo 한 번 더.
-				FAIMoveRequest Req;
-				Req.SetGoalLocation(NewRallyPoint);
-				Req.SetAcceptanceRadius(80.f);
-				Req.SetUsePathfinding(true);
-				Req.SetAllowPartialPath(true);
-				AICon->MoveTo(Req);
-			}
+	// 자동 경로: 전투 중이 아닐 때만 BB/MoveTo 갱신.
+	// 전투 중이라면 Perception이 끝나면서 자연스럽게 SetTargetLocationFromLaneState/Rally로 돌아오게 두자.
+	if (UBlackboardComponent* BB = AICon->GetBlackboardComponent())
+	{
+		const bool bAttacking = BB->GetValueAsBool(TEXT("bIsAttacking"));
+		if (!bAttacking)
+		{
+			BB->SetValueAsVector(TEXT("TargetLocation"), NewRallyPoint);
+
+			// BT MoveTo가 latent 상태라면 즉시 갱신을 못 받을 수 있으니 명시적 MoveTo 한 번 더.
+			FAIMoveRequest Req;
+			Req.SetGoalLocation(NewRallyPoint);
+			Req.SetAcceptanceRadius(80.f);
+			Req.SetUsePathfinding(true);
+			Req.SetAllowPartialPath(true);
+			AICon->MoveTo(Req);
 		}
 	}
 }

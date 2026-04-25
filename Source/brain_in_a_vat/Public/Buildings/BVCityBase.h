@@ -21,6 +21,8 @@ DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnRallyPointChanged, FVector, NewRa
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnGarrisonChanged, int32, NewGarrisonCount);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_OneParam(FOnDispatchTargetChanged, ABVCityBase*, NewTargetCity);
 DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnDispatchFired, ABVCityBase*, FromCity, ABVCityBase*, ToCity);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnMarchDirectionChanged, float, NewAngleDeg, bool, bHasDirection);
+DECLARE_DYNAMIC_MULTICAST_DELEGATE_TwoParams(FOnCityTeamChanged, EBVTeam, PrevTeam, EBVTeam, NewTeam);
 
 /**
  * 점령 가능한 거점(도시).
@@ -46,6 +48,11 @@ public:
 	// 위젯 쪽에서 바인딩해 색/길이 갱신.
 	UPROPERTY(BlueprintAssignable, Category = "City|Capture")
 	FOnCaptureProgressChanged OnCaptureProgressChanged;
+
+	// 소유 팀이 전환됐을 때 1회 브로드캐스트 (PrevTeam, NewTeam).
+	// OwningCity로 이 도시를 가리키는 건물들이 구독해 자기 TeamType을 미러링한다.
+	UPROPERTY(BlueprintAssignable, Category = "City|Capture")
+	FOnCityTeamChanged OnCityTeamChanged;
 
 	// ─── Discovery (안개 시야로 처음 발견됐는지) ──────────────
 	// 처음 발견될 때만 공지/델리게이트 발사. true 이후엔 다시 false로 안 돌아감.
@@ -157,6 +164,39 @@ public:
 	// 현재 출격 목표 도시 (없으면 nullptr).
 	UFUNCTION(BlueprintPure, Category = "City|Dispatch")
 	ABVCityBase* GetDispatchTargetCity() const { return DispatchTargetCity.Get(); }
+
+	// ─── March Direction (자유 각도 진군) ────────────────────
+	// 지정된 월드 Yaw 방향으로 Threshold 도달 시 자동 진격.
+	// DispatchTargetCity와 둘 다 세팅돼 있으면 MarchDirection이 우선 (도시 타겟은 무시).
+	// 각도는 UE Yaw 규칙: 0 = +X, 90 = +Y. 유닛은 이 방향으로 도시에서 MarchDistance만큼 떨어진
+	// 가상의 지점으로 이동 명령을 받아 "무작정" 진군한다 (중간 교전은 일반 교전 로직이 처리).
+	UPROPERTY(BlueprintReadOnly, Category = "City|Dispatch", meta = (HideInDetailPanel))
+	float MarchAngleDeg = 0.f;
+
+	UPROPERTY(BlueprintReadOnly, Category = "City|Dispatch", meta = (HideInDetailPanel))
+	bool bHasMarchDirection = false;
+
+	// 진군 목적지 계산용 직선 거리. 맵 크기 이상으로 크게 잡아 "무작정" 느낌을 확보.
+	// UI에서 덮어쓰지 않는 한 기본값 사용.
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "City|Dispatch", meta = (ClampMin = "1000.0"))
+	float MarchDistance = 100000.f;
+
+	// MarchDirection 변경/해제 시 1회 브로드캐스트 (UI 화살표 갱신용).
+	UPROPERTY(BlueprintAssignable, Category = "City|Dispatch")
+	FOnMarchDirectionChanged OnMarchDirectionChanged;
+
+	// 진군 방향을 Yaw(도) 단위로 설정. 세팅 즉시 자동 평가가 돌아 Threshold 충족이면 즉시 발사.
+	UFUNCTION(BlueprintCallable, Category = "City|Dispatch")
+	void SetMarchDirection(float AngleDeg);
+
+	// 진군 방향 해제. 자동 진격 중지 (게리슨은 유지, RallyPoint도 유지).
+	UFUNCTION(BlueprintCallable, Category = "City|Dispatch")
+	void ClearMarchDirection();
+
+	// 수동 진격 — Threshold 무시. bHasMarchDirection 유효 + 게리슨 있으면 즉시 그 방향으로 전부 출격.
+	// RallyPoint는 유지되므로 다음 스폰 유닛은 다시 도시에 집결.
+	UFUNCTION(BlueprintCallable, Category = "City|Dispatch")
+	void MarchNow();
 
 	// 수동 출격 — Threshold 무시. 목표 도시가 유효하고 게리슨이 비어있지 않으면 즉시 전부 출격.
 	// 출격 = 게리슨 유닛 모두에게 목표 도시 위치를 RallyDestination으로 지정 + 본 도시 게리슨에서 제거.

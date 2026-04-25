@@ -238,6 +238,25 @@ void ABVBuildingBase::SetEmissionColor(const FLinearColor& InColor)
 	}
 }
 
+void ABVBuildingBase::ApplyOwningCityEmissionColor()
+{
+	// 도시 자신은 자체 UpdateEmissionColorForCurrentTeam에서 색을 잡으므로 여기서 건드리지 않는다.
+	if (Cast<ABVCityBase>(this)) return;
+
+	ABVCityBase* City = OwningCity.Get();
+	if (!City) return;
+
+	FLinearColor Target;
+	switch (TeamType)
+	{
+	case EBVTeam::Player: Target = City->PlayerEmissionColor;  break;
+	case EBVTeam::Enemy:  Target = City->EnemyEmissionColor;   break;
+	default:              Target = City->NeutralEmissionColor; break;
+	}
+
+	SetEmissionColor(Target);
+}
+
 UAbilitySystemComponent* ABVBuildingBase::GetAbilitySystemComponent() const
 {
 	return ASC;	
@@ -507,6 +526,44 @@ void ABVBuildingBase::BeginPlay()
 	// (도시 자신은 ResolveOwningCity 내부에서 자기 자신을 owning city로 갖지 않도록 가드.)
 	ResolveOwningCity();
 
+	// DA에 OwningCity가 명시됐으면 자동 탐색 결과를 덮어씀 (수동 지정이 우선).
+	// 도시 자신은 자기 자신/다른 도시를 OwningCity로 가질 수 없음.
+	if (!Cast<ABVCityBase>(this) && BuildingData && !BuildingData->OwningCity.IsNull())
+	{
+		if (ABVCityBase* ManualCity = BuildingData->OwningCity.LoadSynchronous())
+		{
+			OwningCity = ManualCity;
+		}
+	}
+
+	// OwningCity가 유효하면 시작 시 팀 상태를 동기화 + 이후 점령 변경 구독.
+	// 규칙:
+	//  - 도시가 이미 BeginPlay를 마쳤으면(점령된 상태 포함) 현재 City->TeamType을 그대로 신뢰.
+	//    (런타임 건설 시 이 브랜치로 들어와 점령된 팀을 즉시 반영)
+	//  - 아직 BeginPlay 전이면(초기 레벨 로드 레이스) City->BuildingData의 DA 초기 팀을 사용.
+	if (ABVCityBase* City = OwningCity.Get())
+	{
+		if (City->HasActorBegunPlay())
+		{
+			TeamType = City->TeamType;
+		}
+		else if (City->BuildingData)
+		{
+			TeamType = City->BuildingData->TeamType;
+		}
+		else
+		{
+			TeamType = City->TeamType;
+		}
+
+		// 중복 바인딩 방지.
+		City->OnCityTeamChanged.RemoveDynamic(this, &ABVBuildingBase::HandleOwningCityTeamChanged);
+		City->OnCityTeamChanged.AddDynamic(this, &ABVBuildingBase::HandleOwningCityTeamChanged);
+
+		// 점령된 도시 위에 새로 지은 건물이 도시 색을 그대로 따라가게 emission 동기화.
+		ApplyOwningCityEmissionColor();
+	}
+
 	const bool bWillProduce = SpawnUnitClass && RespawnInterval > 0.f;
 
 	// 생산 중 펄스 on/off 초기 상태 반영 (머티리얼에 IsProducing 파라미터 없어도 안전).
@@ -561,6 +618,16 @@ void ABVBuildingBase::ResolveOwningCity()
 	{
 		OwningCity = BestCity;
 	}
+}
+
+void ABVBuildingBase::HandleOwningCityTeamChanged(EBVTeam /*PrevTeam*/, EBVTeam NewTeam)
+{
+	// 도시의 소유 팀이 바뀌었으니 자기 팀도 따라간다.
+	// TeamType은 GetGenericTeamId의 백킹 필드 — 이 대입 하나로 AI 인지/데미지 필터까지 반영됨.
+	TeamType = NewTeam;
+
+	// 도시 점령자 변경 → 산하 건물 emission도 새 팀 색으로 갱신.
+	ApplyOwningCityEmissionColor();
 }
 
 
@@ -637,7 +704,25 @@ void ABVBuildingBase::SpawnUnit()
 	FVector SpawnLocation    = BuildingLoc + GetActorForwardVector() * SpawnRadius;
 	FVector SpawnDirection   = GetActorForwardVector();
 
-	if (AssignedLane && !RoutedCity)
+	if (RoutedCity)
+	{
+		// City 산하 생산건물: 스폰 반경 위에서 RallyPoint와 가장 가까운 지점을 선택.
+		// (원의 중심=건물, 원 위의 점 중 RallyPoint까지 거리가 최소인 점 = 건물→랠리 방향 교차점.)
+		const FVector Rally = RoutedCity->RallyPoint;
+		const FVector ToRally2D(Rally.X - BuildingLoc.X, Rally.Y - BuildingLoc.Y, 0.f);
+
+		FVector Dir2D = ToRally2D.IsNearlyZero(1.f)
+			? FVector(GetActorForwardVector().X, GetActorForwardVector().Y, 0.f).GetSafeNormal()
+			: ToRally2D.GetSafeNormal();
+		if (Dir2D.IsNearlyZero())
+		{
+			Dir2D = FVector::ForwardVector;
+		}
+
+		SpawnLocation = BuildingLoc + Dir2D * SpawnRadius;
+		SpawnDirection = Dir2D;
+	}
+	else if (AssignedLane)
 	{
 		const FVector FootOnLane         = AssignedLane->GetPerpendicularFoot(BuildingLoc);
 		const FVector BuildingToFoot     = FVector(FootOnLane.X - BuildingLoc.X, FootOnLane.Y - BuildingLoc.Y, 0.f);
@@ -712,18 +797,18 @@ void ABVBuildingBase::SpawnUnit()
 	}
 }
 
-void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
+void ABVBuildingBase::SetSelected_Implementation(bool bInSelected)
 {
-	bIsHovered = bInHovered;
-	HoverTargetValue = bInHovered ? 1.f : 0.f;
+	bIsHovered = bInSelected;
+	HoverTargetValue = bInSelected ? 1.f : 0.f;
 
-	// 새 StaticMesh 버전 hover ring 호출 (BoxComponent 기반 AutoSize + Project Settings 값 사용).
+	// 선택 링 호출 (BoxComponent 기반 AutoSize + Project Settings 값 사용).
 	if (StaticHoverRingComponent)
 	{
-		StaticHoverRingComponent->SetHovered(bInHovered, TeamType);
+		StaticHoverRingComponent->SetHovered(bInSelected, TeamType);
 	}
 
-	if (!bInHovered) return;
+	if (!bInSelected) return;
 
 	// 호버 시작 시점에 팀 색을 고정. attitude가 아닌 실제 팀 ID로 판정
 	// (attitude는 점령용으로 중립을 적대로 취급해서 색 오인 유발).
@@ -759,6 +844,29 @@ void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
 			HoverRingDecal->SetDecalMaterial(HoverRingMID);
 		}
 	}
+}
+
+void ABVBuildingBase::SetHovered_Implementation(bool bInHovered)
+{
+	if (!StaticMeshComponent) return;
+
+	uint8 Stencil = 0;
+	if (bInHovered)
+	{
+		// 뷰어(Player) 팀 기준으로 스텐실 분기. 1=아군, 2=그 외(적/중립).
+		EBVTeam ViewerTeam = EBVTeam::Player;
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
+		{
+			if (const IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC))
+			{
+				ViewerTeam = static_cast<EBVTeam>(TeamAgentPC->GetGenericTeamId().GetId());
+			}
+		}
+		Stencil = (TeamType == ViewerTeam) ? 1 : 2;
+	}
+
+	StaticMeshComponent->SetRenderCustomDepth(bInHovered);
+	StaticMeshComponent->SetCustomDepthStencilValue(Stencil);
 }
 
 void ABVBuildingBase::UpdateHoverAnim(float DeltaTime)

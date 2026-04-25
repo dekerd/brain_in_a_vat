@@ -41,9 +41,6 @@ ABVPlayerController::ABVPlayerController()
 {
 	bShowMouseCursor = true;
 	DefaultMouseCursor = EMouseCursor::Default;
-
-	HoveredObject = nullptr;
-
 }
 
 void ABVPlayerController::BeginPlay()
@@ -63,16 +60,18 @@ void ABVPlayerController::BeginPlay()
 	TeamID = FGenericTeamId(1);
 
 	// Use Mouse Cursor
+	// 마우스를 항상 뷰포트 안에 가둠 — 엣지 스크롤 끊김 방지.
+	// 개발 중 다른 모니터로 나가야 할 땐 Shift+F1로 수동 해제 가능.
 	FInputModeGameAndUI InputMode;
 	InputMode.SetHideCursorDuringCapture(false);
-	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::DoNotLock);
+	InputMode.SetLockMouseToViewportBehavior(EMouseLockMode::LockAlways);
 	SetInputMode(InputMode);
 
-	// Camera Move
+	// Camera Move + 시작부터 Hero가 선택된 상태로.
 	HeroCharacter = Cast<AMainCharacter>(UGameplayStatics::GetActorOfClass(GetWorld(), AMainCharacter::StaticClass()));
 	if (HeroCharacter)
 	{
-		OnCameraCenterPressed();
+		OnSelectHeroPressed();
 	}
 
 	// Fog of War
@@ -86,6 +85,9 @@ void ABVPlayerController::BeginPlay()
 	// GPU 호출 + 렌더 스레드 동기화가 일어나서 프레임 드랍의 주요 원인이 된다.
 	UpdateFogOfWar(); // 첫 프레임이 0.15초 동안 안개 미적용 상태로 깜빡이지 않도록 즉시 1회
 	GetWorldTimerManager().SetTimer(FogTimerHandle, this, &ABVPlayerController::UpdateFogOfWar, 0.15f, true);
+
+	// Home city 캐시 — 모든 레벨 액터의 BeginPlay가 끝난 다음 틱에 실행.
+	GetWorldTimerManager().SetTimerForNextTick(this, &ABVPlayerController::CacheHomeCityIfNeeded);
 	
 	// <------------------ Widgets ------------------>
 	// MainHUDWidget
@@ -153,49 +155,31 @@ void ABVPlayerController::PlayerTick(float DeltaTime)
 
 	// Hero-주도 건설 경로(현장 이동 후 착공)는 City-only 빌드로 전환되며 제거됨.
 
-	// Mouse Hovering
-	FHitResult Hit;
-	bool bHit = GetHitResultUnderCursor(ECC_MouseHover, false, Hit);
-	AActor* NewHitActor = bHit ? Hit.GetActor() : nullptr;
-
-	if (NewHitActor != HoveredObject)
+	// 마우스 호버 아웃라인(CustomDepth).
+	// - 드래그 중에는 UpdateBoxHover가 박스 안 액터에 직접 SetHovered를 켜므로
+	//   여기 단일 커서 호버 로직은 건너뛴다.
+	if (!bIsDragSelecting)
 	{
-		// 커서가 벗어나도, '선택된 건물' 또는 '박스셀렉션에 포함된 액터'는 호버 유지
-		auto IsBoxSelected = [this](AActor* A)
-		{
-			for (const TWeakObjectPtr<AActor>& W : BoxSelectedActors)
-			{
-				if (W.Get() == A) return true;
-			}
-			return false;
-		};
+		FHitResult Hit;
+		const bool bHit = GetHitResultUnderCursor(ECC_MouseHover, false, Hit);
+		AActor* NewHitActor = bHit ? Hit.GetActor() : nullptr;
 
-		if (HoveredObject &&
-			HoveredObject != DetailBuilding.Get() &&
-			HoveredObject != SelectedHero.Get() &&
-			!IsBoxSelected(HoveredObject))
+		if (NewHitActor != HoveredObject)
 		{
-			if (HoveredObject->Implements<UBVDamageableInterface>())
+			if (AActor* Prev = HoveredObject)
 			{
-				IBVDamageableInterface::Execute_SetHovered(HoveredObject, false);
-			}
-		}
-
-		if (NewHitActor)
-		{
-			if (NewHitActor->Implements<UBVDamageableInterface>())
-			{
-				IBVDamageableInterface::Execute_SetHovered(NewHitActor, true);
-
-				if (HoverSound)
+				if (Prev->Implements<UBVDamageableInterface>())
 				{
-					UGameplayStatics::PlaySound2D(this, HoverSound, HoverSoundVolume);
+					IBVDamageableInterface::Execute_SetHovered(Prev, false);
 				}
 			}
+			if (NewHitActor && NewHitActor->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(NewHitActor, true);
+			}
+			HoveredObject = NewHitActor;
 		}
 	}
-
-	HoveredObject = NewHitActor;
 
 	// 상세 패널이 열려 있을 때, 리스폰 프로그레스 갱신 + 건물 옆에 붙여 따라가기
 	// (BuildingDetailWidget 또는 CityDetailWidget 중 활성화된 쪽을 참조)
@@ -335,10 +319,16 @@ void ABVPlayerController::SetupInputComponent()
 				EnhancedInputComponent->BindAction(SelectHeroAction, ETriggerEvent::Started, this, &ABVPlayerController::OnSelectHeroPressed);
 			}
 
-			// 내 소유 첫 거점으로 카메라 Jump (1)
+			// 내 본진으로 카메라 Jump (1)
 			if (FocusFirstCityAction)
 			{
 				EnhancedInputComponent->BindAction(FocusFirstCityAction, ETriggerEvent::Started, this, &ABVPlayerController::OnFocusFirstCityPressed);
+			}
+
+			// 최근 점령한 거점으로 카메라 Jump (2)
+			if (FocusSecondCityAction)
+			{
+				EnhancedInputComponent->BindAction(FocusSecondCityAction, ETriggerEvent::Started, this, &ABVPlayerController::OnFocusSecondCityPressed);
 			}
 
 
@@ -368,6 +358,12 @@ void ABVPlayerController::SetupInputComponent()
 			{
 				// Left Click in Build Mode -> Confirm the construction
 				EnhancedInputComponent->BindAction(BuildClickAction, ETriggerEvent::Started, this, &ABVPlayerController::OnBuildClick);
+			}
+
+			// R: 선택된 Player 도시의 랠리포인트를 다음 클릭 위치로 지정.
+			if (SetRallyPointAction)
+			{
+				EnhancedInputComponent->BindAction(SetRallyPointAction, ETriggerEvent::Started, this, &ABVPlayerController::OnSetRallyPointPressed);
 			}
 
 			// Inventory Widget
@@ -415,9 +411,15 @@ void ABVPlayerController::ToggleOverheadWidgets()
 
 void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 {
-	// 우클릭 = 상세 패널 닫기 (상시 실행).
+	// 우클릭 = 상세 패널 닫기. 단, 이동 명령을 받을 대상(유닛/히어로)이 있으면
+	// 유닛 선택/링을 보존해야 하므로 HideUnitDetail은 건너뛴다.
+	// (HideUnitDetail은 DetailUnit에 SetSelected(false)를 걸어 링까지 끄기 때문)
 	HideBuildingDetail();
-	HideUnitDetail();
+	const bool bHasMovableSelection = (SelectedUnits.Num() > 0) || SelectedHero.IsValid();
+	if (!bHasMovableSelection)
+	{
+		HideUnitDetail();
+	}
 
 	if (bIsConstructionMode)
 	{
@@ -434,18 +436,39 @@ void ABVPlayerController::MoveToLocation(const FInputActionValue& Value)
 		}
 	}
 
-	// Hero 이동은 Hero가 '선택된' 상태일 때만 수행. 선택 없으면 우클릭은 패널 닫기 전용.
+	// Hero 이동은 Hero가 '선택된' 상태일 때만 수행. Hero가 있으면 우선 처리 후 종료.
 	AMainCharacter* MoveHero = SelectedHero.Get();
-	if (!MoveHero) return;
-
-	FHitResult Hit;
-	if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+	if (MoveHero)
 	{
-		const FVector DestLocation = Hit.ImpactPoint;
-		if (AController* HeroController = MoveHero->GetController())
+		FHitResult Hit;
+		if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
 		{
-			UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, DestLocation);
+			const FVector DestLocation = Hit.ImpactPoint;
+			if (AController* HeroController = MoveHero->GetController())
+			{
+				UAIBlueprintHelperLibrary::SimpleMoveToLocation(HeroController, DestLocation);
+			}
 		}
+		return;
+	}
+
+	// Hero 없고 드래그/클릭으로 선택된 유닛이 있으면 → 멀티 유닛 이동 명령.
+	// 각 유닛에게 SetRallyDestination으로 클릭 지점을 지시. 도시 Dispatch 컨텍스트는 해제
+	// (수동 이동이 이전 자동 출격 흐름을 오버라이드한다는 규약).
+	if (SelectedUnits.Num() == 0) return;
+
+	FHitResult UnitHit;
+	if (!GetHitResultUnderCursor(ECC_Visibility, false, UnitHit)) return;
+
+	const FVector UnitDest = UnitHit.ImpactPoint;
+
+	for (const TWeakObjectPtr<ABVAutobotBase>& Weak : SelectedUnits)
+	{
+		ABVAutobotBase* U = Weak.Get();
+		if (!U || U->bIsDead) continue;
+
+		U->DispatchedToCity = nullptr;
+		U->SetRallyDestination(UnitDest, /*bManualCommand=*/true);
 	}
 }
 
@@ -458,6 +481,9 @@ void ABVPlayerController::SelectObject()
 		AActor* HitActor = Hit.GetActor();
 		SelectedActor = HitActor;
 		OnSelectionChanged.Broadcast(SelectedActor);
+
+		// 단일 클릭은 항상 기존 멀티 유닛 선택을 해제 (Toggle은 아래 Unit 분기에서 별도 처리).
+		ClearUnitMultiSelection();
 
 		if (SelectedActor)
 		{
@@ -517,6 +543,8 @@ void ABVPlayerController::SelectObject()
 				else
 				{
 					ShowUnitDetail(ClickedUnit);
+					// SelectedUnits를 "현재 선택 유닛 집합"으로 일관되게 유지 — 단일도 1개 원소로.
+					SelectedUnits.Add(ClickedUnit);
 				}
 			}
 			else
@@ -538,15 +566,11 @@ void ABVPlayerController::SelectObject()
 
 void ABVPlayerController::SetHeroSelected(AMainCharacter* Hero)
 {
-	// 이전 Hero가 다른 Hero였다면 hover 해제 (현재 커서 위에 있지 않은 경우에만).
 	if (AMainCharacter* Prev = SelectedHero.Get())
 	{
-		if (Prev != Hero && Prev != HoveredObject)
+		if (Prev != Hero && Prev->Implements<UBVDamageableInterface>())
 		{
-			if (Prev->Implements<UBVDamageableInterface>())
-			{
-				IBVDamageableInterface::Execute_SetHovered(Prev, false);
-			}
+			IBVDamageableInterface::Execute_SetSelected(Prev, false);
 		}
 	}
 
@@ -554,7 +578,7 @@ void ABVPlayerController::SetHeroSelected(AMainCharacter* Hero)
 
 	if (Hero && Hero->Implements<UBVDamageableInterface>())
 	{
-		IBVDamageableInterface::Execute_SetHovered(Hero, true);
+		IBVDamageableInterface::Execute_SetSelected(Hero, true);
 	}
 }
 
@@ -562,12 +586,28 @@ void ABVPlayerController::ClearHeroSelection()
 {
 	if (AMainCharacter* Prev = SelectedHero.Get())
 	{
-		if (Prev != HoveredObject && Prev->Implements<UBVDamageableInterface>())
+		if (Prev->Implements<UBVDamageableInterface>())
 		{
-			IBVDamageableInterface::Execute_SetHovered(Prev, false);
+			IBVDamageableInterface::Execute_SetSelected(Prev, false);
 		}
 	}
 	SelectedHero = nullptr;
+}
+
+void ABVPlayerController::ClearUnitMultiSelection()
+{
+	for (const TWeakObjectPtr<ABVAutobotBase>& Weak : SelectedUnits)
+	{
+		ABVAutobotBase* U = Weak.Get();
+		if (!U) continue;
+
+		// DetailUnit과 겹치는 경우엔 HideUnitDetail이 나중에 또 끌 수 있지만 무해 (idempotent).
+		if (U->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetSelected(U, false);
+		}
+	}
+	SelectedUnits.Empty();
 }
 
 void ABVPlayerController::OnBuildKeyPressed()
@@ -575,6 +615,15 @@ void ABVPlayerController::OnBuildKeyPressed()
 	if (bIsConstructionMode)
 	{
 		ExitConstructionMode();
+		return;
+	}
+
+	// 건설메뉴가 이미 열려 있으면 B를 다시 누를 때 곧장 닫는다.
+	// (첫 오픈 시 CloseCurrentUI가 CityDetail을 숨기므로, 아래 ContextCity 분기에선
+	//  ContextCity가 null이 되어 early-return에 걸려 토글이 동작하지 않던 문제를 우회.)
+	if (ConstructionMenuWidget && ConstructionMenuWidget->GetVisibility() == ESlateVisibility::Visible)
+	{
+		ToggleConstructionMenuUI(nullptr);
 		return;
 	}
 
@@ -587,6 +636,12 @@ void ABVPlayerController::OnBuildKeyPressed()
 	}
 
 	if (!ContextCity)
+	{
+		return;
+	}
+
+	// 적군/중립 거점은 패널은 보여도 빌드 액션은 막는다 (정보 열람만 허용).
+	if (ContextCity->TeamType != static_cast<EBVTeam>(GetGenericTeamId().GetId()))
 	{
 		return;
 	}
@@ -711,15 +766,12 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 {
 	if (!InBuilding) return;
 
-	// 이전 선택 건물이 있고 새 선택과 다르다면, 커서 위에 있지 않을 때 호버 이펙트 해제
+	// 이전 선택 건물이 있고 새 선택과 다르다면, 링 해제
 	if (ABVBuildingBase* Previous = DetailBuilding.Get())
 	{
-		if (Previous != InBuilding && Previous != HoveredObject)
+		if (Previous != InBuilding && Previous->Implements<UBVDamageableInterface>())
 		{
-			if (Previous->Implements<UBVDamageableInterface>())
-			{
-				IBVDamageableInterface::Execute_SetHovered(Previous, false);
-			}
+			IBVDamageableInterface::Execute_SetSelected(Previous, false);
 		}
 	}
 
@@ -798,10 +850,10 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 	DetailBuilding = InBuilding;
 	ActiveDetailWidget = TargetWidget;
 
-	// 선택된 건물은 호버 이펙트를 강제로 켜둔다 (커서가 벗어나도 유지)
+	// 선택된 건물에 링 ON.
 	if (InBuilding->Implements<UBVDamageableInterface>())
 	{
-		IBVDamageableInterface::Execute_SetHovered(InBuilding, true);
+		IBVDamageableInterface::Execute_SetSelected(InBuilding, true);
 	}
 
 	// 위젯 종류에 맞는 초기화 호출.
@@ -836,12 +888,12 @@ void ABVPlayerController::ShowBuildingDetail(ABVBuildingBase* InBuilding)
 
 void ABVPlayerController::HideBuildingDetail()
 {
-	// 선택 해제 시, 현재 커서가 그 건물 위에 있지 않다면 호버 이펙트를 끈다
+	// 선택 해제 시 링 OFF.
 	if (ABVBuildingBase* Previous = DetailBuilding.Get())
 	{
-		if (Previous != HoveredObject && Previous->Implements<UBVDamageableInterface>())
+		if (Previous->Implements<UBVDamageableInterface>())
 		{
-			IBVDamageableInterface::Execute_SetHovered(Previous, false);
+			IBVDamageableInterface::Execute_SetSelected(Previous, false);
 		}
 	}
 
@@ -927,10 +979,10 @@ void ABVPlayerController::ShowUnitDetail(ABVAutobotBase* InUnit)
 
 	DetailUnit = InUnit;
 
-	// 선택된 유닛에 호버 이펙트 강제 ON
+	// 선택된 유닛에 링 ON.
 	if (InUnit->Implements<UBVDamageableInterface>())
 	{
-		IBVDamageableInterface::Execute_SetHovered(InUnit, true);
+		IBVDamageableInterface::Execute_SetSelected(InUnit, true);
 	}
 
 	if (UBVUnitDetailWidget* DetailW = Cast<UBVUnitDetailWidget>(UnitDetailWidget))
@@ -954,9 +1006,9 @@ void ABVPlayerController::HideUnitDetail()
 {
 	if (ABVAutobotBase* Previous = DetailUnit.Get())
 	{
-		if (Previous != HoveredObject && Previous->Implements<UBVDamageableInterface>())
+		if (Previous->Implements<UBVDamageableInterface>())
 		{
-			IBVDamageableInterface::Execute_SetHovered(Previous, false);
+			IBVDamageableInterface::Execute_SetSelected(Previous, false);
 		}
 	}
 
@@ -1084,30 +1136,99 @@ void ABVPlayerController::OnSelectHeroPressed()
 
 void ABVPlayerController::OnFocusFirstCityPressed()
 {
-	// 내 팀 소유 거점 중 첫 번째(TActorIterator 순서)에 카메라 Jump.
-	const FGenericTeamId MyTeamId = GetGenericTeamId();
-	ABVCityBase* FirstOwnedCity = nullptr;
-	for (TActorIterator<ABVCityBase> It(GetWorld()); It; ++It)
+	// Slot 1 = HomeCity(시작 시점 본진). 새로 점령한 도시가 슬롯 1을 빼앗지 않도록 고정.
+	CacheHomeCityIfNeeded();
+
+	ABVCityBase* TargetCity = HomeCity.Get();
+	// HomeCity가 적에게 넘어갔거나 유효하지 않으면, 내 팀 소유 거점 중 첫 번째로 폴백.
+	if (!TargetCity || TargetCity->GetGenericTeamId() != GetGenericTeamId())
 	{
-		ABVCityBase* City = *It;
-		if (!City) continue;
-		if (City->GetGenericTeamId() == MyTeamId)
+		const FGenericTeamId MyTeamId = GetGenericTeamId();
+		for (TActorIterator<ABVCityBase> It(GetWorld()); It; ++It)
 		{
-			FirstOwnedCity = City;
-			break;
+			ABVCityBase* City = *It;
+			if (City && City->GetGenericTeamId() == MyTeamId)
+			{
+				TargetCity = City;
+				break;
+			}
 		}
 	}
 
-	if (!FirstOwnedCity) return;
+	if (!TargetCity) return;
 
 	// 거점 자동 선택 (Detail 패널 표시) + 다른 선택 상태 해제.
 	ClearHeroSelection();
 	HideUnitDetail();
-	ShowBuildingDetail(FirstOwnedCity);
+	ShowBuildingDetail(TargetCity);
 
 	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
 	{
-		CamPawn->JumpToLocation(FirstOwnedCity->GetActorLocation());
+		CamPawn->JumpToLocation(TargetCity->GetActorLocation());
+	}
+}
+
+void ABVPlayerController::OnFocusSecondCityPressed()
+{
+	// Slot 2 = LastCapturedCity(가장 최근에 아군이 점령한 거점).
+	// 그 사이에 잃었으면(GetGenericTeamId != MyTeam) 무시.
+	ABVCityBase* TargetCity = LastCapturedCity.Get();
+	if (!TargetCity || TargetCity->GetGenericTeamId() != GetGenericTeamId())
+	{
+		return;
+	}
+
+	ClearHeroSelection();
+	HideUnitDetail();
+	ShowBuildingDetail(TargetCity);
+
+	if (ABVRTSCameraPawn* CamPawn = Cast<ABVRTSCameraPawn>(GetPawn()))
+	{
+		CamPawn->JumpToLocation(TargetCity->GetActorLocation());
+	}
+}
+
+void ABVPlayerController::CacheHomeCityIfNeeded()
+{
+	if (HomeCity.IsValid()) return;
+
+	const FGenericTeamId MyTeamId = GetGenericTeamId();
+	for (TActorIterator<ABVCityBase> It(GetWorld()); It; ++It)
+	{
+		ABVCityBase* City = *It;
+		if (City && City->GetGenericTeamId() == MyTeamId)
+		{
+			HomeCity = City;
+			return;
+		}
+	}
+}
+
+void ABVPlayerController::NotifyCityOwnershipChanged(ABVCityBase* City, EBVTeam PrevTeam, EBVTeam NewTeam)
+{
+	if (!City) return;
+
+	if (NewTeam == EBVTeam::Player && PrevTeam != EBVTeam::Player)
+	{
+		// 본진이 아직 정해지지 않았고 다른 아군 거점이 전혀 없다면 이번 점령을 본진으로 확정.
+		// (맵 시작 시 아군 도시 없이 시작하는 케이스 보호.)
+		CacheHomeCityIfNeeded();
+		if (!HomeCity.IsValid())
+		{
+			HomeCity = City;
+			return;
+		}
+
+		// 본진이 이미 있으면 이번 점령은 Slot 2로.
+		if (HomeCity.Get() != City)
+		{
+			LastCapturedCity = City;
+		}
+	}
+	else if (NewTeam != EBVTeam::Player && LastCapturedCity.Get() == City)
+	{
+		// Slot 2였던 도시를 잃었으면 트래킹 해제.
+		LastCapturedCity = nullptr;
 	}
 }
 
@@ -1385,6 +1506,13 @@ void ABVPlayerController::EnterCityBuildMode(ABVCityBase* City, TSubclassOf<ABVB
 		return;
 	}
 
+	// 도시를 소유한 팀만 그 위에 건설 가능. 적군/중립 도시는 거부.
+	// (BP 패널이 이미 가드해도 콘솔/스크립트 호출 대비 서버측 가드.)
+	if (City->TeamType != static_cast<EBVTeam>(GetGenericTeamId().GetId()))
+	{
+		return;
+	}
+
 	// (선택 가드) 해당 도시가 BuildableBuildings에 이 클래스를 갖고 있어야 빌드 허용.
 	// 패널 UI에서 이미 필터링되겠지만, 콘솔/스크립트 호출 대비.
 	if (City->BuildableBuildings.Num() > 0 && !City->BuildableBuildings.Contains(InBuildingClass))
@@ -1573,10 +1701,67 @@ void ABVPlayerController::CloseShopUI()
 
 // ======================= Box Selection =======================
 
+void ABVPlayerController::OnSetRallyPointPressed()
+{
+	// 현재 선택된 액터가 Player 소유 도시일 때만 랠리 배치 모드 진입.
+	// (적/중립 도시 또는 일반 건물은 무시 — 플로우 오염 방지)
+	ABVCityBase* City = Cast<ABVCityBase>(SelectedActor);
+	if (!City)
+	{
+		bPendingRallyPlacement = false;
+		PendingRallyCity.Reset();
+		return;
+	}
+
+	if (City->GetGenericTeamId() != GetGenericTeamId())
+	{
+		bPendingRallyPlacement = false;
+		PendingRallyCity.Reset();
+		return;
+	}
+
+	bPendingRallyPlacement = true;
+	PendingRallyCity = City;
+}
+
 void ABVPlayerController::OnSelectPressed()
 {
+	// 랠리포인트 배치 대기 중이면 이번 좌클릭을 "랠리 지정"으로 소비.
+	// 박스 드래그/셀렉션으로 흘려보내지 않는다.
+	if (bPendingRallyPlacement)
+	{
+		ABVCityBase* City = PendingRallyCity.Get();
+		bPendingRallyPlacement = false;
+		PendingRallyCity.Reset();
+
+		// 도시가 여전히 유효하고 내 팀이면 랠리 갱신. 클램프는 SetRallyPoint가 담당.
+		if (City && City->GetGenericTeamId() == GetGenericTeamId())
+		{
+			FHitResult Hit;
+			if (GetHitResultUnderCursor(ECC_Visibility, false, Hit))
+			{
+				City->SetRallyPoint(Hit.ImpactPoint);
+			}
+		}
+
+		// 뒤따를 OnSelectReleased의 SelectObject 폴백을 억제 (선택 해제 방지).
+		bRallyClickConsumed = true;
+		return;
+	}
+
 	// 기존 박스 셀렉션 먼저 해제
 	ClearBoxSelection();
+
+	// 드래그 중엔 박스가 아웃라인을 전담. 기존 커서 호버 상태는 비우고,
+	// 드래그 종료 후 PlayerTick이 재평가하도록 HoveredObject를 리셋.
+	if (AActor* Prev = HoveredObject)
+	{
+		if (Prev->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(Prev, false);
+		}
+	}
+	HoveredObject = nullptr;
 
 	bIsDragSelecting = true;
 	bDragMovedBeyondThreshold = false;
@@ -1591,6 +1776,13 @@ void ABVPlayerController::OnSelectPressed()
 
 void ABVPlayerController::OnSelectReleased()
 {
+	// 방금 랠리 배치 클릭을 소비한 경우 — 이 Release는 무시.
+	if (bRallyClickConsumed)
+	{
+		bRallyClickConsumed = false;
+		return;
+	}
+
 	const bool bWasDrag = bIsDragSelecting && bDragMovedBeyondThreshold;
 
 	bIsDragSelecting = false;
@@ -1598,35 +1790,88 @@ void ABVPlayerController::OnSelectReleased()
 
 	if (bWasDrag)
 	{
-		// 박스 셀렉션에 정확히 1개만 걸렸으면 해당 대상을 선택 처리.
-		if (BoxSelectedActors.Num() == 1)
+		// 박스 후보를 Hero/Units/기타로 분리.
+		// 규칙:
+		//   - Hero가 박스에 들어오면 Hero 단일 선택(기존 동작).
+		//   - Hero가 없고 Unit이 하나라도 있으면 → Unit 다수 선택.
+		//     (N==1이면 UnitDetail 패널 + 링. N>=2면 패널은 숨기고 링만 다 켬.)
+		//   - Hero/Unit 모두 없으면 → 기존 ResolveBoxSelection로 건물 1개 선택.
+		AMainCharacter* HeroInBox = nullptr;
+		TArray<ABVAutobotBase*> UnitsInBox;
+
+		for (const TWeakObjectPtr<AActor>& Weak : BoxSelectedActors)
 		{
-			AActor* OnlyActor = BoxSelectedActors[0].Get();
-			if (AMainCharacter* Hero = Cast<AMainCharacter>(OnlyActor))
+			AActor* A = Weak.Get();
+			if (!A) continue;
+
+			if (AMainCharacter* H = Cast<AMainCharacter>(A))
 			{
-				HideBuildingDetail();
-				HideUnitDetail();
-				SetHeroSelected(Hero);
+				HeroInBox = H; // 박스에 Hero는 한 명만 존재.
 			}
-			else if (ABVAutobotBase* Unit = Cast<ABVAutobotBase>(OnlyActor))
+			else if (ABVAutobotBase* U = Cast<ABVAutobotBase>(A))
 			{
-				ClearHeroSelection();
-				HideBuildingDetail();
-				ShowUnitDetail(Unit);
+				UnitsInBox.Add(U);
 			}
-			else if (ABVBuildingBase* Building = Cast<ABVBuildingBase>(OnlyActor))
+		}
+
+		if (HeroInBox)
+		{
+			HideBuildingDetail();
+			HideUnitDetail();
+			ClearUnitMultiSelection();
+			SetHeroSelected(HeroInBox);
+		}
+		else if (UnitsInBox.Num() >= 1)
+		{
+			ClearHeroSelection();
+			HideBuildingDetail();
+			ClearUnitMultiSelection(); // 이전 멀티 선택 링 정리 후 새로 채움.
+
+			if (UnitsInBox.Num() == 1)
 			{
-				ClearHeroSelection();
+				// 단일: 기존 UnitDetail 경로 재사용 — 링 on + 패널 오픈.
+				ShowUnitDetail(UnitsInBox[0]);
+				SelectedUnits.Add(UnitsInBox[0]);
+			}
+			else
+			{
+				// 다수: 패널은 숨기고 링만 모두 on. 장래 이동 명령은 SelectedUnits 이터레이션.
 				HideUnitDetail();
-				ShowBuildingDetail(Building);
+				for (ABVAutobotBase* U : UnitsInBox)
+				{
+					if (!U) continue;
+					if (U->Implements<UBVDamageableInterface>())
+					{
+						IBVDamageableInterface::Execute_SetSelected(U, true);
+					}
+					SelectedUnits.Add(U);
+				}
 			}
 		}
 		else
 		{
-			// 여러 개 선택 → 기존 상세 패널 닫기 (Hero 선택은 유지).
-			HideBuildingDetail();
-			HideUnitDetail();
+			// 유닛/Hero 없음 → 건물만 남은 경우: 기존 ResolveBoxSelection로 1개 선택.
+			if (AActor* Chosen = ResolveBoxSelection(BoxSelectedActors))
+			{
+				if (ABVBuildingBase* Building = Cast<ABVBuildingBase>(Chosen))
+				{
+					ClearHeroSelection();
+					HideUnitDetail();
+					ClearUnitMultiSelection();
+					ShowBuildingDetail(Building);
+				}
+			}
+			else
+			{
+				// 박스 비었음 → 상세 패널 닫기 (Hero 선택은 유지).
+				HideBuildingDetail();
+				HideUnitDetail();
+				ClearUnitMultiSelection();
+			}
 		}
+
+		// 후보 목록 비우기. 최종 링은 위 분기에서 각자 붙였음.
+		ClearBoxSelection();
 		return;
 	}
 
@@ -1695,7 +1940,10 @@ void ABVPlayerController::UpdateBoxHover()
 		TestAndAdd(*It);
 	}
 
-	// 이전 박스에 있었지만 이번엔 빠진 액터 → un-hover
+	// 드래그 중 아웃라인(SetHovered) 갱신 — 박스에 새로 들어온/빠진 액터에 대해서만 토글.
+	// 링(SetSelected)은 Release 시에만 붙는다.
+
+	// 박스에서 빠진 액터 → 아웃라인 OFF.
 	for (const TWeakObjectPtr<AActor>& Old : BoxSelectedActors)
 	{
 		AActor* OldActor = Old.Get();
@@ -1706,29 +1954,26 @@ void ABVPlayerController::UpdateBoxHover()
 		{
 			if (N.Get() == OldActor) { bStillIn = true; break; }
 		}
-		if (!bStillIn)
+		if (!bStillIn && OldActor->Implements<UBVDamageableInterface>())
 		{
-			if (OldActor != HoveredObject &&
-				OldActor != DetailBuilding.Get() &&
-				OldActor != SelectedHero.Get())
-			{
-				if (OldActor->Implements<UBVDamageableInterface>())
-				{
-					IBVDamageableInterface::Execute_SetHovered(OldActor, false);
-				}
-			}
+			IBVDamageableInterface::Execute_SetHovered(OldActor, false);
 		}
 	}
 
-	// 이번 박스에 들어온 액터 → hover ON
+	// 박스에 새로 들어온 액터 → 아웃라인 ON.
 	for (const TWeakObjectPtr<AActor>& N : NewSet)
 	{
-		if (AActor* A = N.Get())
+		AActor* A = N.Get();
+		if (!A) continue;
+
+		bool bWasIn = false;
+		for (const TWeakObjectPtr<AActor>& Old : BoxSelectedActors)
 		{
-			if (A->Implements<UBVDamageableInterface>())
-			{
-				IBVDamageableInterface::Execute_SetHovered(A, true);
-			}
+			if (Old.Get() == A) { bWasIn = true; break; }
+		}
+		if (!bWasIn && A->Implements<UBVDamageableInterface>())
+		{
+			IBVDamageableInterface::Execute_SetHovered(A, true);
 		}
 	}
 
@@ -1737,17 +1982,126 @@ void ABVPlayerController::UpdateBoxHover()
 
 void ABVPlayerController::ClearBoxSelection()
 {
+	// 박스에 남아있던 액터들의 아웃라인 OFF.
 	for (const TWeakObjectPtr<AActor>& W : BoxSelectedActors)
 	{
-		AActor* A = W.Get();
-		if (!A) continue;
-		if (A == HoveredObject) continue;
-		if (A == DetailBuilding.Get()) continue;
-		if (A == SelectedHero.Get()) continue;
-		if (A->Implements<UBVDamageableInterface>())
+		if (AActor* A = W.Get())
 		{
-			IBVDamageableInterface::Execute_SetHovered(A, false);
+			if (A->Implements<UBVDamageableInterface>())
+			{
+				IBVDamageableInterface::Execute_SetHovered(A, false);
+			}
 		}
 	}
 	BoxSelectedActors.Reset();
+}
+
+AActor* ABVPlayerController::ResolveBoxSelection(const TArray<TWeakObjectPtr<AActor>>& Candidates) const
+{
+	if (Candidates.Num() == 0) return nullptr;
+
+	// 스크린 X 좌표(없으면 월드 X 폴백). 정렬 키로 사용.
+	auto GetScreenX = [this](AActor* A) -> float
+	{
+		if (!A) return TNumericLimits<float>::Max();
+		FVector2D Screen;
+		if (ProjectWorldLocationToScreen(A->GetActorLocation(), Screen))
+		{
+			return Screen.X;
+		}
+		return A->GetActorLocation().X;
+	};
+
+	// 카테고리별로 분류. MainCharacter는 ABVAutobotBase/ABVBuildingBase와 별도 계층.
+	AMainCharacter* FoundHero = nullptr;
+	TArray<ABVAutobotBase*> Units;
+	TArray<ABVCityBase*> Cities;
+	TArray<ABVBuildingBase*> OtherBuildings;
+
+	for (const TWeakObjectPtr<AActor>& W : Candidates)
+	{
+		AActor* A = W.Get();
+		if (!A) continue;
+
+		if (AMainCharacter* Hero = Cast<AMainCharacter>(A))
+		{
+			FoundHero = Hero; // Hero는 사실상 1명이라고 가정.
+			continue;
+		}
+		if (ABVAutobotBase* Unit = Cast<ABVAutobotBase>(A))
+		{
+			Units.Add(Unit);
+			continue;
+		}
+		if (ABVCityBase* City = Cast<ABVCityBase>(A))
+		{
+			Cities.Add(City);
+			continue;
+		}
+		if (ABVBuildingBase* Building = Cast<ABVBuildingBase>(A))
+		{
+			OtherBuildings.Add(Building);
+			continue;
+		}
+	}
+
+	// Rule 1: Hero
+	if (FoundHero) return FoundHero;
+
+	// Rule 2: Unit 중 가장 왼쪽
+	if (Units.Num() > 0)
+	{
+		Units.Sort([&GetScreenX](ABVAutobotBase& A, ABVAutobotBase& B)
+		{
+			return GetScreenX(&A) < GetScreenX(&B);
+		});
+		return Units[0];
+	}
+
+	// Rule 3: City 중 가장 왼쪽
+	if (Cities.Num() > 0)
+	{
+		Cities.Sort([&GetScreenX](ABVCityBase& A, ABVCityBase& B)
+		{
+			return GetScreenX(&A) < GetScreenX(&B);
+		});
+		return Cities[0];
+	}
+
+	// Rule 4 + 5: 일반 건물만 남음. 클래스별로 묶어 최다 그룹에서 가장 왼쪽을 고름.
+	// 동수(Rule 5, 각 1개씩 포함)면 동수 그룹들의 모든 건물 중 가장 왼쪽.
+	if (OtherBuildings.Num() > 0)
+	{
+		TMap<UClass*, TArray<ABVBuildingBase*>> Groups;
+		for (ABVBuildingBase* B : OtherBuildings)
+		{
+			if (B) Groups.FindOrAdd(B->GetClass()).Add(B);
+		}
+
+		int32 MaxCount = 0;
+		for (const auto& Pair : Groups)
+		{
+			MaxCount = FMath::Max(MaxCount, Pair.Value.Num());
+		}
+
+		TArray<ABVBuildingBase*> BestCandidates;
+		for (const auto& Pair : Groups)
+		{
+			if (Pair.Value.Num() == MaxCount)
+			{
+				BestCandidates.Append(Pair.Value);
+			}
+		}
+
+		if (BestCandidates.Num() > 0)
+		{
+			BestCandidates.Sort([&GetScreenX](ABVBuildingBase& A, ABVBuildingBase& B)
+			{
+				return GetScreenX(&A) < GetScreenX(&B);
+			});
+			return BestCandidates[0];
+		}
+	}
+
+	return nullptr;
 }

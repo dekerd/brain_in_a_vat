@@ -170,8 +170,9 @@ public:
 	FVector RallyDestination = FVector::ZeroVector;
 
 	// 게리슨 재집결 갱신용. BB의 TargetLocation을 즉시 새 지점으로 덮어쓰고 MoveTo 재발행.
+	// bManualCommand=true 면 BB의 bManualMoveActive를 켜서 BT가 교전 선점해 수동 이동 분기로 전환.
 	UFUNCTION(BlueprintCallable, Category = "Garrison")
-	void SetRallyDestination(const FVector& NewRallyPoint);
+	void SetRallyDestination(const FVector& NewRallyPoint, bool bManualCommand = false);
 
 	// ─── Dispatch (도시→도시 출격) ────────────────────────────
 	// City가 Dispatch()로 출격시킬 때 채워주는 목적지 도시.

@@ -3,9 +3,9 @@
 
 #include "AI/BTService/BTService_UpdateClosestEnemy.h"
 #include "AIController.h"
-#include "AI/BVAIController.h"
 #include "Characters/BVAutobotBase.h"
 #include "Perception/AIPerceptionComponent.h"
+#include "Perception/AISense_Sight.h"
 #include "BehaviorTree/BlackboardComponent.h"
 #include "Data/BVUnitData.h"
 #include "Weapons/Projectiles/BVProjectileBase.h"
@@ -32,9 +32,12 @@ void UBTService_UpdateClosestEnemy::TickNode(UBehaviorTreeComponent& OwnerComp, 
 	UBlackboardComponent* Blackboard = OwnerComp.GetBlackboardComponent();
 	if (!Blackboard) return;
 
-	ABVAIController* BVAIController = Cast<ABVAIController>(AIController);
-	UAIPerceptionComponent* Perception = BVAIController ? BVAIController->GetPerceptionComponent() : nullptr;
+	UAIPerceptionComponent* Perception = AIController->GetPerceptionComponent();
 	if (!Perception) return;
+
+	// 플레이어 수동 이동 명령이 활성 중이면 perception 재타겟팅 억제.
+	// BT의 수동 이동 분기가 MoveTo 완료 후 이 키를 해제한다.
+	if (Blackboard->GetValueAsBool(TEXT("bManualMoveActive"))) return;
 
 	TArray<AActor*> Actors;
 	Perception->GetCurrentlyPerceivedActors(UAISense_Sight::StaticClass(), Actors);
