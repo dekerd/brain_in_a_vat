@@ -68,6 +68,16 @@ public:
 	FGameplayAttributeData MovementSpeed;
 	ATTRIBUTE_ACCESSORS(UCombatAttributeSet, MovementSpeed)
 
+	// 보급. 매 초 일정량 감소하고, 0이 되면 Health가 깎이기 시작한다 (Starvation).
+	// 감소/피해량은 ABVCharacterBase의 SupplyDecayPerSecond/StarvationDamagePerSecond가 관리.
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes|Supply")
+	FGameplayAttributeData Supply;
+	ATTRIBUTE_ACCESSORS(UCombatAttributeSet, Supply)
+
+	UPROPERTY(BlueprintReadOnly, Category = "Attributes|Supply")
+	FGameplayAttributeData MaxSupply;
+	ATTRIBUTE_ACCESSORS(UCombatAttributeSet, MaxSupply)
+
 	virtual void PreAttributeChange(const FGameplayAttribute& Attribute, float& NewValue) override;
 	
 };

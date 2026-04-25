@@ -44,6 +44,11 @@ public:
 	virtual FGenericTeamId GetGenericTeamId() const override { return FGenericTeamId((uint8)TeamType); }
 	virtual void SetGenericTeamId(const FGenericTeamId& NewTeamID) override { TeamType = (EBVTeam)NewTeamID.GetId(); }
 
+	// OwningCity의 소유 팀이 전환됐을 때 호출 — 자기 TeamType을 도시에 맞춰 동기화.
+	// 파생 클래스에서 시각 반응(이미시브/파티클 등)을 추가하고 싶으면 오버라이드.
+	UFUNCTION()
+	virtual void HandleOwningCityTeamChanged(EBVTeam PrevTeam, EBVTeam NewTeam);
+
 // Capsule Offset
 
 protected:
@@ -245,6 +250,10 @@ protected:
 	// HDR(값 > 1) 허용 — bloom으로 번짐 강조하고 싶을 때 활용.
 	virtual void SetEmissionColor(const FLinearColor& InColor);
 
+	// OwningCity가 있을 때, 도시의 팀별 emission 팔레트에서 현재 TeamType에 맞는 색을 가져와 적용.
+	// 도시가 없거나 도시 자신이면 no-op. BeginPlay 동기화/팀 전환 직후 호출.
+	void ApplyOwningCityEmissionColor();
+
 	UPROPERTY()
 	TArray<TObjectPtr<UMaterialInstanceDynamic>> DynamicMaterials;
 	
@@ -262,6 +271,9 @@ public:
 
 // Mouse-hovering effect (지상 데칼 링으로 표시)
 public:
+	UFUNCTION()
+	void SetSelected_Implementation(bool bInSelected) override;
+
 	UFUNCTION()
 	void SetHovered_Implementation(bool bInHovered) override;
 

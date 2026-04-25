@@ -7,6 +7,7 @@
 #include "InputActionValue.h"
 #include "GameFramework/PlayerController.h"
 #include "Headers/BVAnnouncerEvent.h"
+#include "Headers/BVTeam.h"
 #include "BVPlayerController.generated.h"
 
 class ABVNPCBase;
@@ -72,8 +73,26 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
 	TObjectPtr<class UInputAction> BuildAction;
 	
-	void OnBuildClick();   
+	void OnBuildClick();
 	void OnBuildKeyPressed();
+
+	// R 키: 현재 선택된 Player 소유 City가 있으면, 다음 좌클릭을 "랠리포인트 지정"으로 소비.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input, Meta = (AllowPrivateAccess = "true"))
+	TObjectPtr<class UInputAction> SetRallyPointAction;
+
+	void OnSetRallyPointPressed();
+
+	// 다음 좌클릭이 랠리포인트 배치로 소비되어야 함을 나타냄 (R 키 활성 직후 True).
+	// 클릭이 소비되면 false로 복구.
+	UPROPERTY(Transient)
+	bool bPendingRallyPlacement = false;
+
+	// 랠리 배치 플로우를 유지하고 있는 대상 도시. SelectedActor가 바뀌어도 R 시점의 도시를 기억.
+	TWeakObjectPtr<class ABVCityBase> PendingRallyCity;
+
+	// OnSelectPressed에서 랠리 클릭을 소비했을 때 true. OnSelectReleased가 보고 SelectObject 스킵 후 클리어.
+	UPROPERTY(Transient)
+	bool bRallyClickConsumed = false;
 
 	// 3. Inputs for UIs
 
@@ -154,9 +173,13 @@ protected:
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	TObjectPtr<class UInputAction> SelectHeroAction;
 
-	// 내가 소유한 첫 번째 거점으로 카메라 Jump (기본 키: 1).
+	// 내 본진(시작 시점 가장 먼저 소유한 거점)으로 카메라 Jump (기본 키: 1).
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
 	TObjectPtr<class UInputAction> FocusFirstCityAction;
+
+	// 가장 최근에 점령한 거점으로 카메라 Jump (기본 키: 2).
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = Input)
+	TObjectPtr<class UInputAction> FocusSecondCityAction;
 
 	UPROPERTY()
 	bool bIsWaitingForArrival = false;
@@ -171,6 +194,22 @@ protected:
 	void OnFocusLastCombatPressed();
 	void OnSelectHeroPressed();
 	void OnFocusFirstCityPressed();
+	void OnFocusSecondCityPressed();
+
+	// BeginPlay 후 한 틱 지연으로 시작 시점 소유 도시를 HomeCity로 캐시.
+	void CacheHomeCityIfNeeded();
+
+	// Slot 1: 게임 시작 시점의 본진(고정). 한 번 세팅되면 더 이상 바뀌지 않음.
+	TWeakObjectPtr<ABVCityBase> HomeCity;
+
+	// Slot 2: 가장 최근에 Player 팀으로 점령된 거점. 우리가 그 도시를 잃으면 해제.
+	TWeakObjectPtr<ABVCityBase> LastCapturedCity;
+
+public:
+	// 도시가 팀 전환될 때 ABVCityBase가 호출. Slot 2(LastCapturedCity) 트래킹을 갱신.
+	void NotifyCityOwnershipChanged(ABVCityBase* City, EBVTeam PrevTeam, EBVTeam NewTeam);
+
+protected:
 
 public:
 	// 전투 발생 시 유닛/타워가 호출. 가장 최근 전투 좌표를 기록한다.
@@ -272,16 +311,10 @@ protected:
 	void ExitConstructionMode();
 	void UpdateGhostLocation();
 	
-// Mouse Hovering
+// Mouse Hovering (외곽선 아웃라인용)
 protected:
 	UPROPERTY()
 	TObjectPtr<class AActor> HoveredObject;
-
-	UPROPERTY(EditAnywhere, Category = "Audio")
-	TObjectPtr<class USoundBase> HoverSound;
-
-	UPROPERTY(EditAnywhere, Category = "Audio")
-	float HoverSoundVolume = 0.5f;
 
 // Box Selection (drag-select)
 public:
@@ -294,10 +327,19 @@ protected:
 	void OnSelectPressed();
 	void OnSelectReleased();
 
-	// 박스 내부의 유닛/건물 호버 상태 업데이트
+	// 드래그 박스 내부의 선택 후보 목록(BoxSelectedActors) 갱신. 링은 표시하지 않음.
 	void UpdateBoxHover();
 
-	// 박스 셀렉션 리셋 — 현재 박스로 호버된 액터들을 모두 un-hover
+	// 박스 셀렉션 후보들 중 우선순위 규칙에 따라 실제 선택될 액터 1개를 반환.
+	// 규칙:
+	//   1) Hero 있으면 Hero
+	//   2) 아니면 Unit 중 가장 왼쪽(스크린 X 최소)
+	//   3) 아니면 City 중 가장 왼쪽
+	//   4) 아니면 일반 건물: 같은 클래스로 가장 많이 모인 그룹의 건물 중 왼쪽
+	//   5) 동수이면(각 1개씩) 그 중 가장 왼쪽
+	AActor* ResolveBoxSelection(const TArray<TWeakObjectPtr<AActor>>& Candidates) const;
+
+	// 박스 셀렉션 후보 리스트 초기화.
 	void ClearBoxSelection();
 
 	// 박스 셀렉션 상태
@@ -314,9 +356,18 @@ protected:
 	UPROPERTY(EditDefaultsOnly, Category = "Selection")
 	float DragThresholdPixels = 6.f;
 
-	// 현재 박스에 들어있어서 호버 중인 액터들 (드래그 종료 후에도 hover 유지)
+	// 드래그 박스 내부의 현재 후보 액터들. Release 시 ResolveBoxSelection이 이 목록에서 1개를 고른다.
 	UPROPERTY()
 	TArray<TWeakObjectPtr<AActor>> BoxSelectedActors;
+
+	// 드래그 박스로 선택된 유닛 집합. 단일 유닛이 선택된 경우에도 [그 유닛 1개]로 유지.
+	// Hero/Building/ground 선택이 발생하면 ClearUnitMultiSelection에서 비워진다.
+	// 앞으로 이동 명령 등이 이 배열을 iterate 대상으로 삼음.
+	UPROPERTY()
+	TArray<TWeakObjectPtr<class ABVAutobotBase>> SelectedUnits;
+
+	// 모든 선택된 유닛의 링을 끄고 배열을 비운다. 단일-패널(DetailUnit)은 건드리지 않음.
+	void ClearUnitMultiSelection();
 
 // Announce Sound
 public:

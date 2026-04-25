@@ -345,17 +345,14 @@ void AMainCharacter::OnVisionRadiusBeginOverlap(UPrimitiveComponent* OverlappedC
 
 	if (!OtherActor || OtherActor == this) return;
 
-	const IGenericTeamAgentInterface* TargetTeamAgent = Cast<IGenericTeamAgentInterface>(OtherActor);
-	if (!TargetTeamAgent) return;
+	// 팀 필터를 overlap 시점에 걸지 않는다.
+	// 도시 점령처럼 사거리 안에서 팀이 바뀌는 케이스에서 BeginOverlap이 다시 발사되지 않아
+	// 옛 팀 기준의 결정이 그대로 굳어 버리는 문제가 생긴다 (예: 아군→적 도시 점령 후 미사일 미발사).
+	// IGenericTeamAgentInterface를 구현하는 액터만 등록하고, 적/아군 분기는 발사 시점에 한다
+	// (FindNearestEnemyInRange가 Damageable 인터페이스로 매 틱 판정).
+	if (!Cast<IGenericTeamAgentInterface>(OtherActor)) return;
 
-	FGenericTeamId OtherTeamId = TargetTeamAgent->GetGenericTeamId();
-	FGenericTeamId MyTeamId = GetGenericTeamId();
-
-	// 같은 팀이 아니면 전부 적대 대상(중립 거점 포함).
-	if (OtherTeamId != MyTeamId)
-	{
-		EnemiesInRange.AddUnique(OtherActor);
-	}
+	EnemiesInRange.AddUnique(OtherActor);
 
 }
 
@@ -635,12 +632,35 @@ class AActor* AMainCharacter::FindNearestEnemyInRange() const
 
 }
 
-void AMainCharacter::SetHovered_Implementation(bool bInHovered)
+void AMainCharacter::SetSelected_Implementation(bool bInSelected)
 {
-	// StaticMesh 버전만 실제 렌더링.
+	// 선택 링 렌더링.
 	if (StaticHoverRingComponent)
 	{
-		StaticHoverRingComponent->SetHovered(bInHovered, TeamType);
+		StaticHoverRingComponent->SetHovered(bInSelected, TeamType);
 	}
+}
+
+void AMainCharacter::SetHovered_Implementation(bool bInHovered)
+{
+	USkeletalMeshComponent* CharacterMesh = GetMesh();
+	if (!CharacterMesh) return;
+
+	uint8 Stencil = 0;
+	if (bInHovered)
+	{
+		EBVTeam ViewerTeam = EBVTeam::Player;
+		if (APlayerController* PC = UGameplayStatics::GetPlayerController(GetWorld(), 0))
+		{
+			if (const IGenericTeamAgentInterface* TeamAgentPC = Cast<IGenericTeamAgentInterface>(PC))
+			{
+				ViewerTeam = static_cast<EBVTeam>(TeamAgentPC->GetGenericTeamId().GetId());
+			}
+		}
+		Stencil = (TeamType == ViewerTeam) ? 1 : 2;
+	}
+
+	CharacterMesh->SetRenderCustomDepth(bInHovered);
+	CharacterMesh->SetCustomDepthStencilValue(Stencil);
 }
 

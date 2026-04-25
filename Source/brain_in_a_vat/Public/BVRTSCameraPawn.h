@@ -48,7 +48,7 @@ protected:
 	bool bEnableEdgeScroll = true;
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Zoom")
-	float TargetZoom = 2000.0f; // 목표 줌(스프링 암 길이)
+	float TargetZoom = 6000.0f; // 목표 줌(스프링 암 길이). MinZoom ~ MaxZoom 범위 안에 있어야 함.
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Zoom")
 	float MinZoom = 5000.0f; // 최대 줌인 거리
@@ -61,6 +61,11 @@ protected:
 
 	UPROPERTY(EditAnywhere, Category = "Camera|Zoom")
 	float ZoomInterpSpeed = 10.0f; // 부드러운 줌 보간 속도
+
+	// 포커스 시 타겟이 화면 세로 중앙이 아닌 위쪽에 보이도록 rig을 타겟 뒤로 당기는 비율.
+	// 0.15 = 화면 높이의 15% 만큼 위로. UI 패널이 하단을 덮어도 타겟이 가려지지 않게 함.
+	UPROPERTY(EditAnywhere, Category = "Camera|Focus", meta=(ClampMin="0.0", ClampMax="0.45"))
+	float FocusScreenOffsetRatio = 0.15f;
 
 	UPROPERTY()
 	AActor* TargetToFollow;
@@ -77,4 +82,8 @@ protected:
 	float JumpElapsed = 0.f;
 
 	void HandleEdgePanning(float DeltaTime);
+
+	// 현재 zoom/pitch/FOV 기준으로, 타겟을 화면 상단 FocusScreenOffsetRatio 지점에 두기 위해
+	// pawn 위치에서 "타겟 월드 위치 - 이 벡터" 로 쓰는 월드 offset.
+	FVector ComputeFocusWorldOffset() const;
 };

@@ -301,7 +301,9 @@ void ABVAIController::BeginPlay()
 
 void ABVAIController::OnPerceptionUpdated(const TArray<AActor*>& UpdatedActors)
 {
-	
+	// 수동 이동 명령 활성 중에는 perception 재타겟팅 금지. BT가 이 키를 만들고 지운다.
+	if (BlackboardComponent && BlackboardComponent->GetValueAsBool(TEXT("bManualMoveActive"))) return;
+
 	APawn* ControllingPawn = GetPawn();
 	if (!ControllingPawn) return;
 

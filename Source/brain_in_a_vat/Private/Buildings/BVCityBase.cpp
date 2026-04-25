@@ -352,6 +352,15 @@ void ABVCityBase::ApplyCaptureDelta(EBVTeam AttackerTeam, float DamageAmount)
 		// 화면 중앙 점령 메시지.
 		BroadcastCaptureAnnouncement(PrevTeam, NewOwner);
 
+		// PlayerController의 거점 슬롯 트래킹(Slot 2 = 최근 점령) 갱신.
+		if (ABVPlayerController* BVPC = Cast<ABVPlayerController>(UGameplayStatics::GetPlayerController(GetWorld(), 0)))
+		{
+			BVPC->NotifyCityOwnershipChanged(this, PrevTeam, NewOwner);
+		}
+
+		// 이 도시를 OwningCity로 가리키는 건물들에게 팀 전환 알림.
+		OnCityTeamChanged.Broadcast(PrevTeam, NewOwner);
+
 		OnCaptured(NewOwner);
 	}
 
@@ -588,13 +597,83 @@ void ABVCityBase::Dispatch()
 void ABVCityBase::EvaluateAutoDispatch()
 {
 	if (DispatchThreshold <= 0) return;
+	if (GetGarrisonCount() < DispatchThreshold) return;
 
+	// MarchDirection이 있으면 우선 — 자유 각도로 진격 (DispatchTargetCity는 무시).
+	if (bHasMarchDirection)
+	{
+		MarchNow();
+		return;
+	}
+
+	// Fallback: 도시 타겟 기반 기존 출격.
 	ABVCityBase* TargetCity = DispatchTargetCity.Get();
 	if (!TargetCity || TargetCity == this) return;
 
-	if (GetGarrisonCount() < DispatchThreshold) return;
-
 	Dispatch();
+}
+
+void ABVCityBase::SetMarchDirection(float AngleDeg)
+{
+	// 0~360 범위로 정규화 (음수/초과 입력 허용).
+	const float Normalized = FRotator::ClampAxis(AngleDeg);
+
+	const bool bChanged = (!bHasMarchDirection) || !FMath::IsNearlyEqual(MarchAngleDeg, Normalized, 0.01f);
+
+	MarchAngleDeg = Normalized;
+	bHasMarchDirection = true;
+
+	if (bChanged)
+	{
+		OnMarchDirectionChanged.Broadcast(MarchAngleDeg, true);
+	}
+
+	// 이미 게리슨이 Threshold 이상이면 즉시 발사.
+	EvaluateAutoDispatch();
+}
+
+void ABVCityBase::ClearMarchDirection()
+{
+	if (!bHasMarchDirection) return;
+
+	bHasMarchDirection = false;
+	OnMarchDirectionChanged.Broadcast(MarchAngleDeg, false);
+}
+
+void ABVCityBase::MarchNow()
+{
+	if (!bHasMarchDirection) return;
+
+	PruneGarrison();
+	if (Garrison.Num() == 0) return;
+
+	// 진군 목적지: 도시 위치에서 MarchDirection 방향으로 MarchDistance 떨어진 지점.
+	// Yaw만 사용하고 Z는 도시 Z 그대로 (지형 높낮이는 내비메시/MoveTo가 알아서 처리).
+	const FVector CityLoc = GetActorLocation();
+	const FVector Dir2D = FRotator(0.f, MarchAngleDeg, 0.f).Vector();
+	const FVector MarchDest(
+		CityLoc.X + Dir2D.X * MarchDistance,
+		CityLoc.Y + Dir2D.Y * MarchDistance,
+		CityLoc.Z);
+
+	// Dispatch()와 동일 패턴 — 사본 순회, 게리슨 먼저 비우기(재평가 루프 방지).
+	TArray<TWeakObjectPtr<ABVAutobotBase>> Pending = Garrison;
+	Garrison.Empty();
+
+	for (const TWeakObjectPtr<ABVAutobotBase>& Weak : Pending)
+	{
+		ABVAutobotBase* Unit = Weak.Get();
+		if (!Unit || Unit->bIsDead) continue;
+
+		// 도시 타겟이 아니므로 DispatchedToCity는 비움 — TickDispatchArrival이 no-op 되도록.
+		Unit->DispatchedToCity = nullptr;
+		Unit->SetRallyDestination(MarchDest);
+	}
+
+	OnGarrisonChanged.Broadcast(0);
+
+	// 기존 OnDispatchFired 채널을 재사용 (ToCity=nullptr로 "방향 진격"을 표현).
+	OnDispatchFired.Broadcast(this, nullptr);
 }
 
 void ABVCityBase::HandleGarrisonChangedForAutoDispatch(int32 /*NewGarrisonCount*/)
@@ -640,8 +719,12 @@ void ABVCityBase::UpdateBottomVFXForCurrentTeam()
 	}
 
 	// 에셋이 바뀐 경우에만 재설정 (같으면 재시작 방지).
+	// Niagara: 활성 중인 컴포넌트에 SetAsset 후 Activate(true)를 호출해도 새 에셋이
+	// 깨끗이 시작되지 않는 경우가 있다 (이전 팀 VFX의 Duration이 아직 안 끝났을 때 등).
+	// 안전하게 DeactivateImmediate로 비운 뒤 교체한다.
 	if (BottomVFXComponent->GetAsset() != NewAsset)
 	{
+		BottomVFXComponent->DeactivateImmediate();
 		BottomVFXComponent->SetAsset(NewAsset);
 	}
 

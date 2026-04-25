@@ -7,6 +7,7 @@
 
 class ABVBuildingBase;
 class ABVAutobotBase;
+class ABVCityBase;
 class UUserWidget;
 
 UCLASS(BlueprintType)
@@ -49,6 +50,13 @@ public:
 
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
 	int32 ConstructionCost = 100;
+
+	// 이 건물이 속해 있는 거점(월드에 배치된 ABVCityBase 인스턴스).
+	// 에디터 드롭다운에서 현재 오픈된 레벨의 City 액터를 고를 수 있다.
+	// 비워두면 특정 거점 소속 없음 — 런타임 코드가 직접 판단.
+	// 주의: TSoftObjectPtr는 맵 종속적 — 다른 맵의 도시를 가리키면 그 맵이 로드되기 전까지 null.
+	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Construction")
+	TSoftObjectPtr<ABVCityBase> OwningCity;
 
 	// Base Stats (방어/체력은 공격 능력과 무관하게 항상 필요)
 	UPROPERTY(EditAnywhere, BlueprintReadOnly, Category = "Stats")

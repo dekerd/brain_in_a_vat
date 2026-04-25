@@ -19,7 +19,7 @@ ABVRTSCameraPawn::ABVRTSCameraPawn()
 	CameraBoom = CreateDefaultSubobject<USpringArmComponent>(TEXT("CameraBoom"));
 	CameraBoom->SetupAttachment(RootComponent);
 	CameraBoom->bDoCollisionTest = false;
-	CameraBoom->TargetArmLength = 5000.0f;
+	CameraBoom->TargetArmLength = 6000.0f; // TargetZoom 기본값과 일치시켜 시작 시 Tick 보간 튐 방지.
 	CameraBoom->SetRelativeRotation(FRotator(-65.f, 0.f, 0.f));
 	CameraBoom->bInheritPitch = false;
 	CameraBoom->bInheritYaw = false;
@@ -34,6 +34,46 @@ void ABVRTSCameraPawn::BeginPlay()
 {
 	Super::BeginPlay();
 	
+}
+
+FVector ABVRTSCameraPawn::ComputeFocusWorldOffset() const
+{
+	if (!CameraBoom || FMath::IsNearlyZero(FocusScreenOffsetRatio))
+	{
+		return FVector::ZeroVector;
+	}
+
+	const APlayerController* PC = Cast<APlayerController>(GetController());
+	int32 VX = 1920, VY = 1080;
+	if (PC) PC->GetViewportSize(VX, VY);
+	const float Aspect = (VY > 0) ? (static_cast<float>(VX) / static_cast<float>(VY)) : (16.f / 9.f);
+	const float HFOVDeg = CameraComponent ? CameraComponent->FieldOfView : 90.f;
+	const float HalfVFOVRad = FMath::Atan(FMath::Tan(FMath::DegreesToRadians(HFOVDeg) * 0.5f) / Aspect);
+
+	// 화면 중앙에서 위로 FocusScreenOffsetRatio 만큼 떨어진 점의 각도.
+	// 정규화 y (화면 반높이 기준) = 2 * ratio. tan(angle) = y_norm * tan(halfVFOV).
+	const float AngleUpRad = FMath::Atan(2.f * FocusScreenOffsetRatio * FMath::Tan(HalfVFOVRad));
+
+	const float PitchRad = FMath::DegreesToRadians(CameraBoom->GetRelativeRotation().Pitch);
+	const float ArmLength = CameraBoom->TargetArmLength;
+
+	// Camera 위치(pawn 원점 기준). Spring arm은 forward 반대 방향으로 ArmLength 만큼 떨어진 소켓.
+	const float CameraX = -FMath::Cos(PitchRad) * ArmLength;
+	const float CameraZ = -FMath::Sin(PitchRad) * ArmLength;
+
+	// 화면 상단 쪽 ray(카메라 forward에서 pitch를 위로 AngleUpRad만큼 더한 방향).
+	const float RayPitch = PitchRad + AngleUpRad;
+	const float RayX = FMath::Cos(RayPitch);
+	const float RayZ = FMath::Sin(RayPitch);
+	if (FMath::Abs(RayZ) < KINDA_SMALL_NUMBER) return FVector::ZeroVector;
+
+	const float T = -CameraZ / RayZ; // pawn 평면과의 교차까지 거리.
+	const float GroundHitX = CameraX + RayX * T;
+
+	FVector ForwardGround = CameraBoom->GetForwardVector();
+	ForwardGround.Z = 0.f;
+	if (!ForwardGround.Normalize()) return FVector::ZeroVector;
+	return ForwardGround * GroundHitX;
 }
 
 void ABVRTSCameraPawn::HandleEdgePanning(float DeltaTime)
@@ -77,7 +117,7 @@ void ABVRTSCameraPawn::Tick(float DeltaTime)
 		// 그래야 Hero가 이동 중이어도 Jump 종료 시 Hero 위치와 정확히 일치.
 		if (AActor* Follow = TargetToFollow)
 		{
-			JumpTargetLocation = Follow->GetActorLocation();
+			JumpTargetLocation = Follow->GetActorLocation() - ComputeFocusWorldOffset();
 			JumpTargetLocation.Z = JumpStartLocation.Z;
 		}
 
@@ -96,7 +136,7 @@ void ABVRTSCameraPawn::Tick(float DeltaTime)
 	if (bIsTracking && TargetToFollow)
 	{
 		FVector CurrentLoc = GetActorLocation();
-		FVector TargetLoc = TargetToFollow->GetActorLocation();
+		FVector TargetLoc = TargetToFollow->GetActorLocation() - ComputeFocusWorldOffset();
 		SetActorLocation(FMath::VInterpTo(CurrentLoc, TargetLoc, DeltaTime, CameraInterpSpeed));
 	}
 	else if (bEnableEdgeScroll)
@@ -132,7 +172,7 @@ void ABVRTSCameraPawn::CenterOnActor(AActor* TargetActor)
 	// Jump interp로 부드럽게 이동. Jump가 끝나면 bIsJumping=false가 되고
 	// Tick의 tracking 루프(bIsTracking=true)가 이어서 actor를 따라간다.
 	JumpStartLocation = GetActorLocation();
-	JumpTargetLocation = TargetActor->GetActorLocation();
+	JumpTargetLocation = TargetActor->GetActorLocation() - ComputeFocusWorldOffset();
 	JumpTargetLocation.Z = JumpStartLocation.Z;
 	JumpElapsed = 0.f;
 	bIsJumping = true;
@@ -150,7 +190,7 @@ void ABVRTSCameraPawn::JumpToLocation(const FVector& WorldLocation)
 	JumpStartLocation = GetActorLocation();
 
 	// Z는 유지(카메라 Rig의 높이는 그대로 둠).
-	JumpTargetLocation = WorldLocation;
+	JumpTargetLocation = WorldLocation - ComputeFocusWorldOffset();
 	JumpTargetLocation.Z = JumpStartLocation.Z;
 
 	JumpElapsed = 0.f;
